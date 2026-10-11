@@ -1,0 +1,62 @@
+
+uv init --python 3.12 --name meridian-ai
+uv sync
+source .venv/bin/activate
+
+git --version
+git add -activate
+git commit -m "message"
+git push
+
+uv add langchain-google-genai
+uv pip install -r requirements.txt. (does not automatically update pyproject.toml and uv.lock )
+uv sync (still does not add in pyproject.toml)
+uv add \
+  "fastapi==0.135.1" \
+  "uvicorn==0.41.0" \
+  "python-multipart==0.0.22" \
+  "pydantic==2.12.5" \
+  "pydantic-settings==2.15.0" \
+  "structlog==26.1.0" \
+  "requests==2.34.2" \
+  "langchain==1.2.11" \
+  "langchain-core==1.2.18" \
+  "langchain-community==0.4.1" \
+  "langchain-text-splitters==1.1.1" \
+  "langchain-google-genai==4.2.1" \
+  "langgraph==1.1.6" \
+  "langchain-chroma==1.1.0" \
+  "chromadb==1.5.9" \
+  "langchain-google-vertexai==3.2.2" \
+  "google-cloud-aiplatform==1.141.0" \
+  "google-cloud-storage==3.9.0" \
+  "pypdf==6.7.5"
+
+uv add "onnxruntime==1.23.2"
+uv add --dev pytest==8.4.2 httpx==0.28.1
+
+uv run python -c "import fastapi, langchain, chromadb; print('FastAPI:', fastapi.__version__); print('LangChain:', langchain.__version__); print('ChromaDB:', chromadb.__version__)"
+FastAPI: 0.135.1
+LangChain: 1.2.11
+ChromaDB: 1.5.9
+
+
+uv run python -c "from langchain_google_genai import ChatGoogleGenerativeAI; import onnxruntime; print('Gemini integration: OK'); print('ONNX Runtime:', onnxruntime.__version__)"
+Gemini integration: OK
+ONNX Runtime: 1.23.2
+
+
+
+mkdir -p backend/{api,rag,agent,config,logger,exceptions,tests}
+touch backend/{api,rag,agent,config,logger,exceptions}/__init__.py -> this allows it to recogonize these folders as python f
+olders and allow us to access them using from backend.rag.retriever import data_retriever.py
+
+touch backend/config/settings.py
+touch backend/logger/custom_logger.py
+touch backend/rag/{llm,embeddings,vector_store}.py
+touch backend/rag/{document_store,data_ingestion,retrieval}.py
+touch backend/agent/{tools,prompts,middleware,agents}.py
+touch backend/api/{schemas,endpoints,main}.py
+touch backend/tests/{conftest,test_api,test_modes_and_middleware}.py
+
+find backend -type f | wc -l

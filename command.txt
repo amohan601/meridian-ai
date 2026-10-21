@@ -60,3 +60,71 @@ touch backend/api/{schemas,endpoints,main}.py
 touch backend/tests/{conftest,test_api,test_modes_and_middleware}.py
 
 find backend -type f | wc -l
+
+cp .env.example .env
+git status --short
+
+to test settings
+cp ../meridian-reference/backend/config/settings.py backend/config/settings.py
+
+cd backend
+uv run python -c "from config.settings import settings, print(settings.app_mode)"
+
+to set it on the finally
+APP_MODE=hybrid uv run python -c "from config.settings import settings, print(settings.app_mode)"
+
+
+uv run python -c "from config.settings import settings; 
+from langchain_google_genai import ChatGoogleGenerativeAI as G; 
+print(G(model=settings.llm_model_name, google_api_key=settings.GOOGLE_API_KEY).invoke('Reply with exactly: hello').text)"
+
+logger testing
+cd backend
+uv run python -c "from logger import GLOBAL_LOGGER as log; log.info("hello", step3)"
+
+
+
+cd backend
+cp ../../meridian-reference/backend/rag/llm.py rag/llm.py
+cp ../../meridian-reference/backend/rag/embeddings.py rag/embeddings.py
+wc -l rag/llm.py rag/embeddings.py
+
+$ cd backend
+$ cp ../../meridian-reference/backend/rag/llm.py rag/llm.py
+$ cp ../../meridian-reference/backend/rag/embeddings.py rag/embeddings.py
+$ wc -l rag/llm.py rag/embeddings.py
+      35 rag/llm.py
+      41 rag/embeddings.py
+      76 total
+
+uv run python -c "from rag.llm import get_llm, extract_text; r = get_llm().invoke('Reply with exactly: hello'); print(r.content); print(extract_text(r.content)); print(repr(extract_text(r.content)))"
+
+cd backend
+PYTHONPATH=. uv run python ../docs/examples/05_similarity_demo.py
+PYTHONPATH=. uv run python ../docs/examples/08_store_demo.py     
+
+
+cp ../../meridian-reference/backend/rag/vector_store.py rag/vector_store.py
+cp ../../meridian-reference/backend/rag/document_store.py rag/document_store.py
+wc -l rag/vector_store.py rag/document_store.py
+
+cd backend
+PYTHONPATH=. uv run python ../docs/examples/08_store_demo.py     
+
+
+cp ../../meridian-reference/backend/rag/data_ingestion.py rag/data_ingestion.py
+wc -l rag/data_ingestion.py
+
+cd backend
+PYTHONPATH=. uv run python ../docs/examples/03_chunking_demo.py
+
+mkdir -p ../.meridian/uploads
+cp ../sample_docs/*.pdf ../.meridian/uploads/
+uv run python -c "from rag.data_ingestion import ingest_stored_pdfs; print(ingest_stored_pdfs())"
+
+PYTHONPATH=. uv run python ../docs/examples/try_modes.py
+
+-------
+from root
+ source .venv/bin/activate
+uvicorn api.main:app --app-dir backend --reload --port 8080

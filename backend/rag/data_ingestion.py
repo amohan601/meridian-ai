@@ -13,6 +13,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 import hashlib
 from rag.vector_store import get_vector_store
+from rag import document_store
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100  # neighbouring chunks share 100 characters so sentences are not cut off
@@ -61,3 +62,21 @@ def ingest_pdf(local_path: str, filename: str) -> dict:
 
 
     return {"pages": len(pages), "chunks": len(chunks)}
+
+# def ingest_stored_pdfs() -> dict:
+#     """Index every PDF already in the document store."""
+#     print("Indexing stored documents")
+#     totals = {"files": 0, "pages": 0, "chunks": 0}
+
+#     with document_store.pdfs() as files:
+#         for local_path, source in files:
+#             result = ingest_pdf(local_path, source=source)
+#             print("Ingested stored PDF")
+#             totals["files"] += 1
+#             totals["pages"] += result["pages"]
+#             totals["chunks"] += result["chunks"]
+
+#     if totals["files"] == 0:
+#         print("No PDF documents found in the document store")
+#     print("Ingestion complete")
+#     return totals

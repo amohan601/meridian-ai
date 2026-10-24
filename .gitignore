@@ -230,7 +230,6 @@ credentials/
 !frontend/src/lib/
 !frontend/src/lib/**
 
-**/__init__.py
 **/scratch-notes.txt
 .meridian/
 logs/

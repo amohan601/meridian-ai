@@ -8,10 +8,14 @@ from rag import document_store
 from rag.retrieval import ask_question
 from rag.data_ingestion import ingest_pdf
 import tempfile
-from api.schemas import  QueryRequest, QueryResponse
+from api.schemas import  QueryRequest, QueryResponse, AuditRequest, AuditResponse
+from agent.agents import ProcurementSupervisor
+from functools import lru_cache
+
 
 health_router = APIRouter(prefix="/api", tags=["Health"])
 rag_router = APIRouter(prefix="/api/rag", tags=["RAG"])
+agent_router = APIRouter(prefix="/api/agent", tags=["Agent"])
 
 # ---------------------------------------------------------------------------
 # Health & status
@@ -20,6 +24,28 @@ rag_router = APIRouter(prefix="/api/rag", tags=["RAG"])
 @health_router.get("/health")
 def health():
     return {"status": "ok", "mode": settings.app_mode}
+
+
+# ---------------------------------------------------------------------------
+# Health & status
+# ---------------------------------------------------------------------------
+@lru_cache(maxsize=1)
+def get_supervisor() -> ProcurementSupervisor:
+    """Build the agents on the first audit request, not when the server starts."""
+    return ProcurementSupervisor()
+
+
+@agent_router.post("/audit", response_model=AuditResponse)
+def audit_request(payload: AuditRequest):
+    try:
+        return AuditResponse(**get_supervisor().run_audit(payload.request_text))
+    # TODO custom exception
+    except Exception as e:
+        print("Audit failed")
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 # ---------------------------------------------------------------------------
 # RAG - upload document
@@ -33,6 +59,7 @@ def rag_query(payload: QueryRequest):
     """Ask a question; the answer comes only from the indexed documents."""
     try:
         return QueryResponse(answer = ask_question(payload.query, payload.retriever_type))
+    # TODO CustomException
     except Exception as e:
         print("RAG query failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -42,6 +69,7 @@ def rag_query(payload: QueryRequest):
 async def upload_documents(files: list[UploadFile] = File(...)):
     """Accept one or more PDFs, keep a copy in the document store, then chunk, embed and index them."""
     print(f'inside upload_documents files present? {files}')
+    
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
     
@@ -87,7 +115,7 @@ async def upload_documents(files: list[UploadFile] = File(...)):
             results.append({"filename": filename, "status": "ingested", **summary})
             pass  # Replace with actual processing logic
 
-        
+    # TODO CustomException        
     except Exception as e:
         print("Upload failed")
         print(e)
@@ -105,3 +133,16 @@ async def upload_documents(files: list[UploadFile] = File(...)):
 def list_uploads():
     """Return the history of uploaded documents (in-memory, resets on restart)."""
     return {"uploads": _UPLOAD_HISTORY}
+
+
+# @rag_router.post("/ingest")
+# @rag_router.post("/ingest-gcs", include_in_schema=False)  # old name, kept so older frontends still work
+# def trigger_store_ingestion():
+#     """Index every PDF already in the document store (local folder or GCS bucket)."""
+#     try:
+#         totals = ingest_stored_pdfs()
+#         return {"status": f"Ingestion complete ({settings.app_mode} mode)", **totals}
+#     # TODO custom exception
+#     except Exception as e:
+#         print("Stored-document ingestion failed")
+#         raise HTTPException(status_code=500, detail=str(e))

@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Local: Gemini API model (API key). Chroma has no fixed size, 768 keeps both modes alike.
     local_embedding_model_name: str = Field("gemini-embedding-001", validation_alias="LOCAL_EMBEDDING_MODEL_NAME")
     embedding_dimensions: int = 768
+    
+    # --- Agent middleware limits ---
+    agent_max_model_calls: int = Field(8, validation_alias="AGENT_MAX_MODEL_CALLS")
+    agent_max_tool_calls: int = Field(6, validation_alias="AGENT_MAX_TOOL_CALLS")
+    agent_max_retries: int = Field(2, validation_alias="AGENT_MAX_RETRIES")
 
 
     # --- Local mode storage ---

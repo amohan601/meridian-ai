@@ -13,3 +13,16 @@ def get_llm() -> ChatGoogleGenerativeAI:
         google_api_key=settings.GOOGLE_API_KEY,
         temperature=settings.llm_temperature,
     )
+
+
+def extract_text(content: str) -> str:
+    """Gemini may return a list of content blocks, e.g. [{'type': 'text', 'text': '...'}]; join the text."""
+    # return content from blocks
+    if isinstance(content,list):
+        return "\n".join(
+            block.get("text", "") for block in content
+            if isinstance(block,dict) and block.get("type") == "text"
+        )
+    # return text content
+    return content
+    

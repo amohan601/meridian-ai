@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from config.settings import settings    
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.endpoints import health_router,rag_router
+from api.endpoints import health_router,rag_router,agent_router
 
 app = FastAPI(
     title=settings.app_name,
@@ -20,3 +20,4 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(rag_router)
+app.include_router(agent_router)

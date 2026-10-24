@@ -1,4 +1,15 @@
-# Meridian AI — Phase 1
+# Meridian AI
+
+## Project phases
+
+Both phases run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available.
+
+This README documents two parts of Meridian AI:
+
+- [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
+- [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
+
+# Phase 1 — Local PDF question answering
 
 Phase 1 provides a local, non-cloud backend for checking service health and asking questions about uploaded PDF documents. It includes a health-check endpoint, a PDF upload endpoint, an upload-history endpoint, and a document-question endpoint.
 
@@ -195,17 +206,135 @@ The upload endpoint receives `files: list[UploadFile]` from FastAPI. It saves ea
 - **Port 8080 is already in use:** Stop the other process or use a different port, such as `--port 8081`.
 - **No useful answer:** Confirm the upload response reports indexed chunks, then ask a question the document text can answer.
 
+# Phase 2 — Agentic procurement audit
+
+Phase 2 runs locally as part of the Meridian AI backend and adds a procurement audit workflow at `POST /api/agent/audit`. It accepts procurement information and runs specialist agents to assess risk, tax and treasury, and financial controls, then synthesizes their findings into a CFO audit memo. The local service uses the configured Gemini model and calls the Frankfurter API for FX-rate validation when available. The endpoint uses the custom Pydantic schemas `AuditRequest` and `AuditResponse`: the request contains `request_text`; the response contains `risk_result`, `tax_result`, `control_result`, and `cfo_memo`.
+
+The Phase 2 notes describe the following outcomes: the Risk Agent returns sanctions and credit findings, payment-term recommendations, supply-chain flags, and a vendor verdict; the Tax Agent reports tax and landed-cost findings, FX validation, and a treasury verdict; the Control Agent returns expense classification, accounting/control findings, flags, and a control verdict. The synthesis step combines all three specialist reports into an executive memo with a final decision and next steps.
+
+## Phase 2 architecture and file-by-file notes
+
+### `POST /api/agent/audit` endpoint and schemas
+
+The endpoint initializes a `ProcurementSupervisor`, passing procurement text to its `run_audit` method. `AuditRequest.request_text` is the input. The response is represented by `AuditResponse` with four fields: `risk_result`, `tax_result`, `control_result`, and `cfo_memo`.
+
+Example request using the local server:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/agent/audit \
+  -H "Content-Type: application/json" \
+  -d '{"request_text":"Purchase Request — Aldermoor Industries Global Procurement:\n- Vendor: Takumi Controls Europe B.V. (Netherlands)\n- Item: Industrial PLC Controllers + HMI Panels (Qty: 200 units) for the Aldermoor filling line production\n- Total Cost: 80,000 EUR\n- Origin: JP (Japan — manufactured)\n- Destination: DE (Aldermoor Industries, Hamburg, Germany)\n- FX Rate quoted: 1 EUR = 163.5 JPY\n- Cost Centre: Production Hamburg (Plant 1)\n- Requested by: Global Procurement — Electronics & Automation Category"}'
+```
+
+### `agents.py`
+
+`ProcurementSupervisor` manages the Phase 2 agent workflow. It uses the shared Google chat model (obtained through an LRU-cached model instance) and three specialist agents:
+
+- **Risk Agent:** created with LangChain's `create_agent`, `RISK_AGENT_PROMPT`, and the `check_sanctions_list` and `get_vendor_credit_score` tools.
+- **Tax Agent:** created with `create_agent`, `TAX_AGENT_PROMPT`, and the `calculate_cross_border_tax` and `validate_fx_hedge` tools.
+- **Control Agent:** created with `create_agent`, `CONTROL_AGENT_PROMPT`, and the `categorize_expense` tool.
+
+`run_audit` runs the three agents one after another using the procurement text. It then runs a synthesis action: the shared model receives the three agent results through `SYNTHESIS_PROMPT_TEMPLATE` and generates `cfo_memo`. The synthesis agent does not call tools directly.
+
+### `middleware.py`
+
+The specialist agents use LangChain agent middleware for input handling, call limits, retries, and tool-call timing:
+
+- `PIIMiddleware("email", strategy="redact", apply_to_input=True)` redacts email addresses in agent input.
+- `PIIMiddleware("credit_card", strategy="mask", apply_to_input=True)` masks credit card numbers in agent input.
+- `ModelCallLimitMiddleware` uses `settings.agent_max_model_calls` and ends the phase when its limit is reached.
+- `ToolCallLimitMiddleware` uses `settings.agent_max_tool_calls` and continues when its limit is reached.
+- `ModelRetryMiddleware` and `ToolRetryMiddleware` retry transient failures, using `settings.agent_max_retries` and exponential backoff. The model retry starts at 1.0 seconds; tool retry starts at 0.5 seconds.
+- The custom `log_tool_calls` middleware, implemented with `@wrap_tool_call`, records the time taken to run tools.
+
+The model-call and tool-call limits can be overridden through the settings configured from `.env`.
+
+### `tools.py`
+
+The agents call focused tools. Each tool has its own prompt or calculation logic; these tool prompts are separate from the specialist agent prompts in `backend/agent/prompt.py`.
+
+**Risk Agent tools**
+
+- `check_sanctions_list(vendor_name: str) -> str` uses a model call with instructions to assess whether the vendor appears on a sanctions list. It returns `RED ALERT` or `CLEARED`; model-call errors are caught and returned as `LLM_ERROR`.
+- `get_vendor_credit_score(vendor_name: str) -> str` uses a model call to assess vendor creditworthiness. Its instructions request a score, risk level, and reasoning.
+
+**Tax Agent tools**
+
+- `calculate_cross_border_tax(amount: float, origin: str, destination: str) -> Dict` estimates tax information using the model's available knowledge. Its result includes tax, VAT/GST, import-duty rates and amounts, total cost, trade-agreement notes, and the origin/destination route.
+- `validate_fx_hedge(currency_pair: str, rate_used: float) -> str` obtains a market rate from `api.frankfurter.dev`, with a fallback to model knowledge if the API call fails. It computes `abs(rate_used - market_rate) / market_rate`. A variance above 5% triggers an audit-required FX alert. The supplied notes show the same alert text in both the above-5% and at-or-below-5% return branches, so confirm the implementation if the below-threshold message matters.
+
+**Control Agent tool**
+
+- `categorize_expense(amount: float, item_description: str) -> str` classifies a purchase as CapEx when it provides future economic benefit and has a useful life over one year; otherwise it classifies it as OpEx. It is instructed to flag CapEx above `$500,000` for CFO sign-off, OpEx above `$100,000` for possible misclassification, and suggest a depreciation period for CapEx. Its result includes classification, reasoning, depreciation, and flags.
+- If the model call fails, the described fallback labels the expense CapEx (three-year depreciation) when the amount is over `$50,000` or the description contains `server`, `machine`, `vehicle`, `building`, `equipment`, or `hardware`. Otherwise it returns OpEx with an immediate-deduction fallback label. Both fallback messages identify that the LLM was unavailable and a heuristic was used.
+
+### `backend/agent/prompt.py`
+
+This module defines prompts for the three specialist agents and the synthesis step:
+
+- `RISK_AGENT_PROMPT` directs the Risk Agent to use sanctions screening and credit assessment, recommend payment terms, identify supply-chain risks, and decide whether to approve, conditionally approve, or reject the vendor. The expected report includes sanctions status, credit score, payment terms, risk flags, and verdict.
+- `TAX_AGENT_PROMPT` directs the Tax Agent to calculate taxes, VAT, and customs duties for international purchases and check exchange rates against company policy. The expected report includes tax liability, effective tax rate, landed cost, FX status, and a treasury decision: approved, hold for treasury audit, or escalate to Group Treasury.
+- `CONTROL_AGENT_PROMPT` directs the Control Agent to classify expenses as CapEx or OpEx under IFRS, suggest a GL account range and depreciation schedule, and flag approval thresholds or potentially misclassified maintenance. The expected report includes classification, IFRS reference, GL range, depreciation, approval threshold, anomaly flags, and control verdict.
+- `SYNTHESIS_PROMPT_TEMPLATE` combines the three reports into a CFO audit memo. Expected content includes an executive summary, key findings, a final decision (`Approved to Pay`, `Conditional Hold`, or `Rejected`), reasons, and actionable next steps with responsible teams and deadlines.
+
+## Phase 2 response and decision flow
+
+```text
+AuditRequest.request_text
+        |
+        v
+ProcurementSupervisor.run_audit
+        |
+        +--> Risk Agent   --> risk_result
+        +--> Tax Agent    --> tax_result
+        +--> Control Agent --> control_result
+                              |
+                              v
+                    synthesis prompt + shared LLM
+                              |
+                              v
+                           cfo_memo
+```
+
+The three specialist agents run sequentially, as described in the supplied Phase 2 notes. Their results feed the synthesis step; the synthesis step does not use tools directly.
+
 ## Project layout
 
 ```text
-backend/
-  api/                 FastAPI application and endpoint definitions
-  config/              Environment-based settings
-  rag/                 PDF ingestion, local vector storage, and question answering
-  tests/               Backend tests
-sample_docs/           Example PDFs for local testing
-requirements.txt       Python dependencies
-.env.example           Local environment-variable template
+.
+├── backend/
+│   ├── agent/
+│   │   ├── agents.py          ProcurementSupervisor and agent orchestration
+│   │   ├── middleware.py      Agent middleware
+│   │   ├── prompt.py          Agent and synthesis prompts
+│   │   └── tools.py           Risk, tax/FX, and control tools
+│   ├── api/
+│   │   ├── endpoints.py       HTTP endpoints
+│   │   ├── main.py            FastAPI application
+│   │   └── schemas.py         API request/response schemas
+│   ├── config/
+│   │   └── settings.py        Environment-based settings
+│   ├── exceptions/            Exception definitions
+│   ├── logger/                Logging setup
+│   └── rag/
+│       ├── data_ingestion.py  PDF loading, splitting, and indexing
+│       ├── document_store.py  Original PDF storage
+│       ├── embeddings.py      Gemini embedding configuration
+│       ├── llm.py             Gemini chat model and text utility
+│       ├── retrieval.py       RAG retrieval and answer chain
+│       └── vector_store.py    Local Chroma configuration
+├── sample_docs/               Example PDFs for local use
+├── .meridian/
+│   ├── chroma/                 Local Chroma database (generated)
+│   └── uploads/                Uploaded original PDFs (generated)
+├── lib_check.py                Local library check utility
+├── main.py                     Root-level entry point
+├── pyproject.toml              Project metadata and dependencies
+├── requirements.txt            Runtime dependencies
+├── requirements-dev.txt        Development dependencies
+├── uv.lock                     Locked dependency versions
+├── .env.example                Local environment-variable template
+└── README.md
 ```
 
-The company and example data in the sample documents are fictional.
+`.meridian/` contains local generated data and should remain out of version control. The `.env` file contains local configuration and secrets; do not commit it. The company and example data in the sample documents are fictional.

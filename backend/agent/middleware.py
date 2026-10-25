@@ -18,7 +18,7 @@ Custom middleware written here:
   * log_tool_calls           - one structured log line per tool call: name, args, duration, outcome
 """
 import time
-
+from logger import GLOBAL_LOGGER as log
 from langchain.agents.middleware import (
     AgentMiddleware,
     ModelCallLimitMiddleware,
@@ -31,25 +31,27 @@ from langchain.agents.middleware import (
 
 from config.settings import settings
 
-
 @wrap_tool_call
 def log_tool_calls(request, handler):
     """Custom middleware: time every tool call and write it to the audit log."""
     name = request.tool_call["name"]
-    print(f"Tool call started tool={name} args={request.tool_call.get("args")}")
+    log.info("Tool call started", tool=name, args=request.tool_call.get("args"))
     started = time.perf_counter()
     try:
         result = handler(request)
     except Exception as exc:
-        print(f"Tool call failed, tool={name}, error={str(exc)},  duration_ms= {round((time.perf_counter() - started) * 1000)}")
+        log.error("Tool call failed", tool=name, error=str(exc),
+                  duration_ms=round((time.perf_counter() - started) * 1000))
         raise
-    print(f"Tool call finished, tool={name}, duration_ms={round((time.perf_counter() - started) * 1000)}, preview={str(getattr(result, "content", result))[:200]}")
+    log.info("Tool call finished", tool=name,
+             duration_ms=round((time.perf_counter() - started) * 1000),
+             preview=str(getattr(result, "content", result))[:200])
     return result
 
 
 def build_agent_middleware() -> list[AgentMiddleware]:
     """The middleware stack shared by all three specialist agents (order matters)."""
-    print('inside build_agent_middleware')
+    log.info('inside build_agent_middleware')
     return [
         # 1. Privacy: purchase requests can contain contact e-mails or card numbers
         PIIMiddleware("email", strategy="redact", apply_to_input=True),

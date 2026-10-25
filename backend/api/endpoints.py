@@ -11,7 +11,7 @@ import tempfile
 from api.schemas import  QueryRequest, QueryResponse, AuditRequest, AuditResponse
 from agent.agents import ProcurementSupervisor
 from functools import lru_cache
-
+from logger.custom_logger import GLOBAL_LOGGER as log
 
 health_router = APIRouter(prefix="/api", tags=["Health"])
 rag_router = APIRouter(prefix="/api/rag", tags=["RAG"])
@@ -23,6 +23,7 @@ agent_router = APIRouter(prefix="/api/agent", tags=["Agent"])
 
 @health_router.get("/health")
 def health():
+    log.info(f"Performing healthcheck of meridian backend app \"status\": \"ok\", \"mode\": {settings.app_mode}")
     return {"status": "ok", "mode": settings.app_mode}
 
 
@@ -38,11 +39,11 @@ def get_supervisor() -> ProcurementSupervisor:
 @agent_router.post("/audit", response_model=AuditResponse)
 def audit_request(payload: AuditRequest):
     try:
+        log.info(f"inside /audit endpoint ")
         return AuditResponse(**get_supervisor().run_audit(payload.request_text))
     # TODO custom exception
     except Exception as e:
-        print("Audit failed")
-        print(e)
+        log.exception("Audit failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -57,18 +58,19 @@ _UPLOAD_HISTORY: list[dict] = []
 @rag_router.post("/ask", response_model=QueryResponse)
 def rag_query(payload: QueryRequest):
     """Ask a question; the answer comes only from the indexed documents."""
+    log.info(f"inside /ask endpoint for {payload.query}")
     try:
         return QueryResponse(answer = ask_question(payload.query, payload.retriever_type))
     # TODO CustomException
     except Exception as e:
-        print("RAG query failed")
+        log.exception("RAG query failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @rag_router.post("/upload")
 async def upload_documents(files: list[UploadFile] = File(...)):
     """Accept one or more PDFs, keep a copy in the document store, then chunk, embed and index them."""
-    print(f'inside upload_documents files present? {files}')
+    log.info(f'inside upload_documents endpoint files present? {files}')
     
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
@@ -79,7 +81,7 @@ async def upload_documents(files: list[UploadFile] = File(...)):
     try:
         # Process each uploaded file
         for upload in files:
-            print(f'upload filename {upload.filename}')
+            log.info(f'upload filename {upload.filename}')
             # Here you would implement the logic to save the file, chunk it, embed it, and index it.
             filename = os.path.basename(upload.filename or "")
             if not filename.endswith(".pdf"):
@@ -89,49 +91,48 @@ async def upload_documents(files: list[UploadFile] = File(...)):
             # read and save file to a temporary directory
             # upload.read() does not extract readable text from the PDF. It reads the raw file bytes and then writes it back to temp file
             file_local_path = os.path.join(tmp_dir, filename)
-            print(f'file_local_path {file_local_path}')
+            log.info(f'file_local_path {file_local_path}')
             with open(file_local_path, "wb") as f:
                 f.write(await upload.read())
 
             # save the original pdf file to document store for local or cloud storage for cloud mode
             # ingest_pdf is slow and blocking, so run it in a worker thread to keep the server responsive
             try:
-                print(f'initiating document_store.save for {file_local_path} {filename}')
+                log.info(f'initiating document_store.save for {file_local_path} {filename}')
                 await run_in_threadpool(document_store.save, file_local_path, filename)
             except Exception as store_err:
-                print("Could not store original file", filename=filename, error=str(store_err))
+                log.warning("Could not store original file", filename=filename, error=str(store_err))
 
-            print(f'initiating ingest_pdf for {file_local_path} {filename}')
+            log.info(f'initiating ingest_pdf for {file_local_path} {filename}')
             # trigger ingestion_pdf process that will perform chunking, embedding and saving in to vectorstore the file content
             summary = await run_in_threadpool(ingest_pdf, file_local_path,  f"upload://{filename}")
 
             if summary["chunks"] == 0:
-                print(f"No chunks extracted, skipping indexing {filename}")
+                log.warning("No chunks extracted, skipping indexing", filename=filename)
                 results.append({"filename": filename, "status": "skipped",
                                 "reason": "No extractable text found in PDF (may be a scanned/image-based PDF)."})
                 continue
 
-            print(f"Successfully ingested chunks {filename} {summary}")
+            log.info(f"Successfully ingested chunks {filename} {summary}")
             results.append({"filename": filename, "status": "ingested", **summary})
             pass  # Replace with actual processing logic
 
     # TODO CustomException        
     except Exception as e:
-        print("Upload failed")
-        print(e)
+        log.exception(f"Upload failed str(e)")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        print("completed")
+        log.info("completed")
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
     _UPLOAD_HISTORY.extend(results)
-    print(_UPLOAD_HISTORY)
     return {"results": results}
 
 @rag_router.get("/uploads")
 def list_uploads():
     """Return the history of uploaded documents (in-memory, resets on restart)."""
+    log.info(f"inside /uploads endpoint ")
     return {"uploads": _UPLOAD_HISTORY}
 
 

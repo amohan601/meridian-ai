@@ -11,10 +11,11 @@ from langchain_core.vectorstores import VectorStore
 from config.settings import settings
 from functools import lru_cache
 from rag.embeddings import get_embeddings
+from logger import GLOBAL_LOGGER as log
 
 def _local_store() -> VectorStore:
     from langchain_chroma import Chroma  # imported here so cloud images do not need it loaded
-    print(f"Using local Chroma vector store {settings.chroma_dir}")
+    log.info("Using local Chroma vector store", path=settings.chroma_dir)
     return Chroma(
         collection_name=settings.chroma_collection,
         embedding_function=get_embeddings(),

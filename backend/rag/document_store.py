@@ -14,18 +14,18 @@ Two operations are all the app needs:
 import os
 from config.settings import settings
 import shutil
-
+from logger import GLOBAL_LOGGER as log
 #--------
 # save the file to document store
 #--------
 def save(local_path: str, filename: str) -> str:
     """save the file to document store"""
-    print(f'document_store.save {filename}')
+    log.info(f'document_store.save {filename}')
     filename = os.path.basename(filename)
-    print(f'document_store.save2 {filename}')
+    log.info(f'document_store.save2 {filename}')
     os.makedirs(settings.local_upload_dir, exist_ok=True)
     stored_at = os.path.join(settings.local_upload_dir, filename)
-    print(f'document_store.save stored_at {stored_at}')
+    log.info(f'document_store.save stored_at {stored_at}')
     shutil.copyfile(local_path, stored_at)
-    print(f"Original file stored {filename}. {stored_at}")
+    log.info(f"Original file stored {filename}. {stored_at}")
     return stored_at

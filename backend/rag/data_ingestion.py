@@ -13,7 +13,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 import hashlib
 from rag.vector_store import get_vector_store
-from rag import document_store
+from logger import GLOBAL_LOGGER as log
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100  # neighbouring chunks share 100 characters so sentences are not cut off
@@ -39,25 +39,26 @@ def ingest_pdf(local_path: str, filename: str) -> dict:
     """
     try:
 
-        print(f'initiating page creation for {filename}')
+        log.info(f'initiating page creation for {filename}')
         pages = PyPDFLoader(local_path).load()
     except Exception as exc:  # pypdf raises many different error types
         #TODO
+        log.error(f"Exception occured in PyPDFLoader {str(exc)}")
         raise Exception(f"Could not read PDF '{filename}': {exc}") from exc
 
 
     for page in pages:
         page.metadata["source"] = filename
 
-    print(f'initiating chunk creation for {filename}')
+    log.info(f'initiating chunk creation for {filename}')
     chunks = split_into_chunks(pages)
 
     if chunks:
-        print(f"Embedding chunks and adding to vector store {filename} length of chunks: {len(chunks)}")
+        log.info(f"Embedding chunks and adding to vector store {filename} length of chunks: {len(chunks)}")
         # generate unique chunk ids for each chunk
         ids = [_generate_chunk_id(chunk, index) for index, chunk in enumerate(chunks)]
         # perform vector store operation that will embed the chunks and save them into vector store
-        print(f"Embedding chunks and adding to vector store {filename} length of chunks: {len(chunks)}")
+        log.info(f"Embedding chunks and adding to vector store {filename} length of chunks: {len(chunks)}")
         get_vector_store().add_documents(chunks, ids=ids)
 
 

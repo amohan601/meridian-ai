@@ -15,6 +15,7 @@ from rag.vector_store import get_vector_store
 from langchain_core.documents import Document
 from pydantic import BaseModel,Field
 from langchain_core.prompts import ChatPromptTemplate
+from logger import GLOBAL_LOGGER as log
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant for question-answering tasks. "
@@ -58,8 +59,8 @@ def _multiquery(question: str) -> list[Document]:
     rewritter_llm = get_llm().with_structured_output(AlternativeQuestions)
     rewrites = rewritter_llm.invoke(f"Write 3 alternative phrasings of this question: {question}")
     queries = [question, *rewrites.questions]
-    print(f"Rewritten queries {rewrites}")
-    print(f"MultiQuery rewrites {queries}")
+    log.info(f"Rewritten queries {rewrites}")
+    log.info(f"MultiQuery rewrites {queries}")
 
     # generate a consolidated list of documents based on similarity search and duplicate document already seen removed along the way
     seen, merged = set(), []
@@ -101,7 +102,7 @@ def build_retriever(retriever_type: str = "similarity") -> RunnableLambda:
         case "contextual":
             strategy = _contextual
         case _:
-            print('invalid input retriever ..using similarity based retrieval')
+            log.info('invalid input retriever ..using similarity based retrieval')
             strategy = _similarity
 
     return RunnableLambda(strategy, name=f"{retriever_type}_retriever")
@@ -128,7 +129,7 @@ def build_rag_chain(retriever_type: str):
 
 def ask_question(query: str, retriever_type: str = "similarity") -> str:
     """Answer a question using the documents stored in the vector store."""
-    print(f"RAG query received Query: {query} retriever_type: {retriever_type}") 
+    log.info(f"RAG query received Query: {query} retriever_type: {retriever_type}") 
     answer = build_rag_chain(retriever_type).invoke(query)
-    print(f"RAG answer generated answer: {answer}")
+    log.info(f"RAG answer generated answer: {answer}")
     return answer

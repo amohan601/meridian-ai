@@ -2,6 +2,7 @@ from langchain_core.tools import tool
 from rag.llm import get_llm,extract_text
 import json
 import requests
+from logger import GLOBAL_LOGGER as log
 
 # ==========================================
 # INTERNAL LLM HELPER
@@ -9,7 +10,7 @@ import requests
 def _ask_llm(prompt: str) -> str:
     """Invoke the configured LLM and return the text content."""
     try:
-      print("ask llm")
+      log.info("ask llm")
       response = get_llm().invoke(prompt)
       return extract_text(response.content)
     except Exception as e:
@@ -22,7 +23,7 @@ def _ask_llm(prompt: str) -> str:
 @tool
 def check_sanctions_list(vendor_name: str) -> str:
     """Checks if a vendor is on global restricted/sanctioned entities lists."""
-    print('check_sanctions_list' +vendor_name)
+    log.info(f"check_sanctions_list {vendor_name}")
     prompt = f"""You are a compliance screening system. Your job is to check whether the 
 vendor name below appears on any major global sanctions or restricted-entity lists based 
 on your training knowledge.
@@ -49,7 +50,7 @@ Respond in a single concise paragraph starting with either "RED ALERT:" or "CLEA
 # end of prompt
 
     result = _ask_llm(prompt)
-    print('result '+result)
+    log.info(f"check_sanctions_list result {result}")
     if result.startswith("LLM_ERROR"):
         return f"SYSTEM WARNING: Sanctions check unavailable — {result}. Manual review required."
     
@@ -58,7 +59,7 @@ Respond in a single concise paragraph starting with either "RED ALERT:" or "CLEA
 @tool
 def get_vendor_credit_score(vendor_name: str) -> str:
     """Retrieves vendor creditworthiness assessment based on publicly known financial health signals."""
-    print('get_vendor_credit_score' +vendor_name)
+    log.info(f"get_vendor_credit_score vendor_name {vendor_name}")
     prompt = f"""You are a financial credit assessment system. Provide a credit score 
 estimate (0-100) for the vendor below based on your training knowledge.
 
@@ -89,15 +90,15 @@ that insufficient data is available.
 Respond ONLY with the JSON object, no other text."""
 
     result = _ask_llm(prompt)
+    log.info(f"get_vendor_credit_score result {result}")
     if result.startswith("LLM_ERROR"):
         return f"SYSTEM WARNING: Credit check unavailable — {result}. Manual review required."
 
     # Try to parse and format nicely
     try:
-      print("")
       # Strip markdown code fences if present
       cleaned = result.strip()
-      print(f"cleaned {cleaned}")
+      log.info(f"cleaned {cleaned}")
       if cleaned.startswith("```"):
           cleaned = cleaned.split("\n", 1)[1]  # Remove first line
           cleaned = cleaned.rsplit("```", 1)[0]  # Remove last fence
@@ -107,12 +108,11 @@ Respond ONLY with the JSON object, no other text."""
       risk = data.get("risk_level", "UNKNOWN")
       reasoning = data.get("reasoning", "No details available")
 
-      print(f"CREDIT SCORE: {score}/100 | RISK: {risk} | {reasoning}"   )
+      log.info(f"CREDIT SCORE: {score}/100 | RISK: {risk} | {reasoning}"   )
       return f"CREDIT SCORE: {score}/100 | RISK: {risk} | {reasoning}"      
     except Exception as e:
-      print("exception "+e)
+      log.info.error("exception "+str(e))
       # Return raw LLM response if parsing fails
-      print(result)
       return result
 
 
@@ -122,6 +122,7 @@ Respond ONLY with the JSON object, no other text."""
 @tool
 def calculate_cross_border_tax(amount: float, origin: str, destination: str) -> dict:
     """Calculates VAT/GST and Import Duties for cross-border transactions."""
+    log.info(f"calculate_cross_border_tax amount {amount}. origin {origin}.  destination {destination}")
     prompt = f"""You are an international tax calculation system. Calculate the applicable 
 taxes for the following cross-border transaction:
 
@@ -154,6 +155,7 @@ affect financial decisions.
 Respond ONLY with the JSON object, no other text."""
 
     result = _ask_llm(prompt)
+    log.info(f"calculate_cross_border_tax amount result {result}")
     if result.startswith("LLM_ERROR"):
         return {"error": result, "route": f"{origin}_{destination}"}
 
@@ -171,6 +173,7 @@ Respond ONLY with the JSON object, no other text."""
         return data
     except (json.JSONDecodeError, KeyError):
         # Fallback: return a safe dict with the raw response
+        log.error(f"calculate_cross_border_tax exception occured")
         return {
             "tax_amount": amount * 0.15,
             "rate": 0.15,
@@ -183,7 +186,7 @@ Respond ONLY with the JSON object, no other text."""
 @tool
 def validate_fx_hedge(currency_pair: str, rate_used: float) -> str:
     """Checks if the FX rate used matches the current market rate, with a 5% variance threshold."""
-
+    log.info(f"validate_fx_hedge currency_pair {currency_pair} rate_used {rate_used}")
     base, quote = None, None
     # Parse currency pair like "EUR_INR" or "USD_INR"
     parts = currency_pair.upper().replace("/", "_").replace("-", "_").split("_")
@@ -206,6 +209,7 @@ def validate_fx_hedge(currency_pair: str, rate_used: float) -> str:
 
     # --- Attempt 2: LLM fallback for rate estimation ---
     if market_rate is None:
+        log.info(f"validate_fx_hedge LLM Fallback for rate estimation")
         prompt = f"""What is the approximate current exchange rate for {currency_pair.replace('_', '/')}?
 Respond with ONLY a single number (the rate). For example, if 1 EUR = 91.5 INR, respond: 91.5"""
         llm_result = _ask_llm(prompt)
@@ -218,6 +222,7 @@ Respond with ONLY a single number (the rate). For example, if 1 EUR = 91.5 INR, 
     # --- Calculate variance ---
     variance = abs(rate_used - market_rate) / market_rate
 
+    log.info(f"validate_fx_hedge LLM variance {variance}")
     if variance > 0.05:
         return (
             f"FX ALERT: Rate used ({rate_used}) vs {source} rate ({market_rate:.4f}) — "
@@ -234,6 +239,8 @@ Respond with ONLY a single number (the rate). For example, if 1 EUR = 91.5 INR, 
 @tool
 def categorize_expense(amount: float, item_description: str) -> str:
     """Determines if the expense is Capital Expenditure (CapEx) or Operational (OpEx) using accounting standards."""
+
+    log.info(f"categorize_expense LLM amount {amount} item_description {item_description}")
     prompt = f"""You are a financial controller applying GAAP/IFRS accounting standards.
 Classify the following expense:
 
@@ -264,6 +271,7 @@ FLAGS: [any anomaly flags or sign-off requirements, or "None"]
 Respond in this exact format, nothing else."""
 
     result = _ask_llm(prompt)
+    log.info(f"categorize_expense LLM result {result}")
     if result.startswith("LLM_ERROR"):
         # Conservative fallback: use simple heuristic
         if amount > 50000 or any(

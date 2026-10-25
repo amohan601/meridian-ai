@@ -2,13 +2,14 @@
 
 ## Project phases
 
-Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code.
+Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support.
 
-This README documents three phases of Meridian AI:
+This README documents four phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
 - [Phase 3 — Unit testing](#phase-3--unit-testing)
+- [Phase 4 — Logging and monitoring](#phase-4--logging-and-monitoring)
 
 # Phase 1 — Local PDF question answering
 
@@ -309,6 +310,73 @@ Phase 3 adds unit-test coverage for the main backend components:
 
 These tests are intended to check each component's behavior independently.
 
+# Phase 4 — Logging and monitoring
+
+Phase 4 introduces centralized logging for the Meridian AI backend using Python's `logging` module and `structlog`. It makes application behavior, processing events, and errors easier to trace during development and troubleshooting.
+
+## Features
+
+- **Shared logger:** `GLOBAL_LOGGER` provides a reusable logger that backend modules can import. It is initialized when the `logger` package is first imported in a Python process; later imports reuse the cached module.
+- **Structured JSON:** `structlog` adds a UTC timestamp, log level, uppercase `severity`, event name, contextual fields, and formatted exception details before rendering each record as JSON.
+- **Console and file output:** Python logging handlers write JSON log entries to the console and to a timestamped `.log` file under a `logs/` directory.
+- **Exception details:** Exception tracebacks are included when exception information is supplied, such as through `log.exception(...)`.
+- **Severity filtering:** The configuration accepts `INFO`, `WARNING`, `ERROR`, and `CRITICAL` records. `DEBUG` records are filtered out.
+
+## Logging architecture
+
+1. `CustomLogger` initializes the logging environment, creates the log file path, and configures handlers.
+2. `GLOBAL_LOGGER`, exposed from `backend/logger/__init__.py` as the `logger` package, provides the shared logger to backend modules.
+3. `structlog` processors add a UTC timestamp, level, uppercase severity, and formatted exception details to each event, then render it as JSON.
+4. Python logging handlers send the rendered message to both console and the timestamped log file.
+
+## Usage
+
+Backend modules can import and use the shared logger:
+
+```python
+from logger import GLOBAL_LOGGER as log
+
+log.info("document_upload_started", filename="policy.pdf")
+log.warning("no_relevant_chunks_found", query="tax policy")
+log.error("document_processing_failed", filename="policy.pdf")
+```
+
+For exception handling, the logger can capture exception details and traceback:
+
+```python
+try:
+    # Document processing logic
+    pass
+except Exception:
+    log.exception("document_processing_failed")
+    raise
+```
+
+Structured fields such as `filename` and `query` provide context for searching and investigating log entries.
+
+## Log output
+
+Each entry is rendered as a JSON object. This example is illustrative:
+
+```json
+{
+  "timestamp": "2026-10-25T02:00:00Z",
+  "level": "info",
+  "severity": "INFO",
+  "event": "document_upload_started",
+  "filename": "policy.pdf"
+}
+```
+
+## Important notes
+
+- Log files are created in `logs/` relative to the application's current working directory.
+- Do not write API keys, credentials, or sensitive document contents to logs.
+
+## Phase 4 outcome
+
+Phase 4 provides a reusable structured logging layer for consistent backend event and error output, helping developers trace and investigate application behavior.
+
 ## Project layout
 
 ```text
@@ -338,6 +406,7 @@ These tests are intended to check each component's behavior independently.
 ├── .meridian/
 │   ├── chroma/                 Local Chroma database (generated)
 │   └── uploads/                Uploaded original PDFs (generated)
+├── logs/                       Timestamped application logs (generated)
 ├── lib_check.py                Local library check utility
 ├── main.py                     Root-level entry point
 ├── pyproject.toml              Project metadata and dependencies

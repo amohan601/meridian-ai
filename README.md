@@ -2,12 +2,13 @@
 
 ## Project phases
 
-Both phases run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available.
+Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code.
 
-This README documents two parts of Meridian AI:
+This README documents three phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
+- [Phase 3 — Unit testing](#phase-3--unit-testing)
 
 # Phase 1 — Local PDF question answering
 
@@ -297,6 +298,16 @@ ProcurementSupervisor.run_audit
 ```
 
 The three specialist agents run sequentially, as described in the supplied Phase 2 notes. Their results feed the synthesis step; the synthesis step does not use tools directly.
+
+# Phase 3 — Unit testing
+
+Phase 3 adds unit-test coverage for the main backend components:
+
+- `backend/agent/` — agent setup, orchestration, middleware, prompts, and tools.
+- `backend/rag/` — PDF ingestion, document and vector storage, embeddings, language-model helpers, and retrieval.
+- `backend/api/endpoints.py` — HTTP endpoint behavior, including the Phase 1 document routes and Phase 2 procurement audit route.
+
+These tests are intended to check each component's behavior independently.
 
 ## Project layout
 

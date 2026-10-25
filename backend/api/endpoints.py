@@ -12,6 +12,8 @@ from api.schemas import  QueryRequest, QueryResponse, AuditRequest, AuditRespons
 from agent.agents import ProcurementSupervisor
 from functools import lru_cache
 from logger.custom_logger import GLOBAL_LOGGER as log
+from exceptions import MeridianError
+
 
 health_router = APIRouter(prefix="/api", tags=["Health"])
 rag_router = APIRouter(prefix="/api/rag", tags=["RAG"])
@@ -41,7 +43,8 @@ def audit_request(payload: AuditRequest):
     try:
         log.info(f"inside /audit endpoint ")
         return AuditResponse(**get_supervisor().run_audit(payload.request_text))
-    # TODO custom exception
+    except MeridianError:
+        raise  # handled in api/main.py
     except Exception as e:
         log.exception("Audit failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -61,7 +64,8 @@ def rag_query(payload: QueryRequest):
     log.info(f"inside /ask endpoint for {payload.query}")
     try:
         return QueryResponse(answer = ask_question(payload.query, payload.retriever_type))
-    # TODO CustomException
+    except MeridianError:
+        raise
     except Exception as e:
         log.exception("RAG query failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -117,7 +121,8 @@ async def upload_documents(files: list[UploadFile] = File(...)):
             results.append({"filename": filename, "status": "ingested", **summary})
             pass  # Replace with actual processing logic
 
-    # TODO CustomException        
+    except MeridianError:
+        raise  
     except Exception as e:
         log.exception(f"Upload failed str(e)")
         raise HTTPException(status_code=500, detail=str(e))

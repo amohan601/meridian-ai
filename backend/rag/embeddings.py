@@ -15,11 +15,15 @@ covers both the Gemini API and Vertex AI (vertexai=True), so one class serves bo
 from functools import lru_cache
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from config.settings import settings
+from exceptions import ConfigurationError
 
 @lru_cache
 def get_embeddings() -> GoogleGenerativeAIEmbeddings:
     """Google GenAI Embedding model"""
     # TODO add cloud settings later
+
+    if not settings.GOOGLE_API_KEY:
+        raise ConfigurationError("APP_MODE=local needs GOOGLE_API_KEY in .env for embeddings.")
     return GoogleGenerativeAIEmbeddings(
         model=settings.local_embedding_model_name,
         google_api_key=settings.GOOGLE_API_KEY,

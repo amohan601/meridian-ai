@@ -2,14 +2,15 @@
 
 ## Project phases
 
-Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support.
+Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support. Phase 5 adds custom exceptions for expected configuration and document-ingestion failures.
 
-This README documents four phases of Meridian AI:
+This README documents five phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
 - [Phase 3 — Unit testing](#phase-3--unit-testing)
 - [Phase 4 — Logging and monitoring](#phase-4--logging-and-monitoring)
+- [Phase 5 — Custom exceptions](#phase-5--custom-exceptions)
 
 # Phase 1 — Local PDF question answering
 
@@ -376,6 +377,27 @@ Each entry is rendered as a JSON object. This example is illustrative:
 ## Phase 4 outcome
 
 Phase 4 provides a reusable structured logging layer for consistent backend event and error output, helping developers trace and investigate application behavior.
+
+# Phase 5 — Custom exceptions
+
+Phase 5 adds custom exceptions so expected failures return clear HTTP responses instead of generic 500 errors. All exception classes live in `backend/exceptions/__init__.py`.
+
+## Exception classes
+
+- **`MeridianError`** — Base class for errors the application raises intentionally.
+- **`ConfigurationError`** — Indicates a required setting is missing, such as `GOOGLE_API_KEY`. The API returns **503 Service Unavailable** with a message identifying what needs to be set.
+- **`IngestionError`** — Indicates a document could not be read, chunked, or indexed. The API returns **422 Unprocessable Entity** with the reason.
+
+## Where exceptions are raised and handled
+
+- `backend/rag/llm.py` and `backend/rag/embeddings.py` raise `ConfigurationError` when the API key is empty.
+- `backend/rag/data_ingestion.py` raises `IngestionError` when a PDF cannot be read.
+- `backend/api/main.py` registers a handler for each exception class. Each handler logs the failure and returns the corresponding status code and message.
+- `backend/api/endpoints.py` re-raises `MeridianError` so the registered handlers can process it. Other exceptions continue to produce a 500 response.
+
+## Phase 5 outcome
+
+A missing API key or unreadable PDF produces a specific, readable response, and the failure is recorded in the log.
 
 ## Project layout
 

@@ -14,6 +14,7 @@ from langchain_core.documents import Document
 import hashlib
 from rag.vector_store import get_vector_store
 from logger import GLOBAL_LOGGER as log
+from exceptions import IngestionError
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100  # neighbouring chunks share 100 characters so sentences are not cut off
@@ -44,7 +45,7 @@ def ingest_pdf(local_path: str, filename: str) -> dict:
     except Exception as exc:  # pypdf raises many different error types
         #TODO
         log.error(f"Exception occured in PyPDFLoader {str(exc)}")
-        raise Exception(f"Could not read PDF '{filename}': {exc}") from exc
+        raise IngestionError(f"Could not read PDF '{filename}': {exc}") from exc
 
 
     for page in pages:

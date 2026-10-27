@@ -1,4 +1,4 @@
 from .custom_logger import CustomLogger
 
-
-GLOBAL_LOGGER = CustomLogger().get_logger()
+_LOGGER_INSTANCE = CustomLogger()
+GLOBAL_LOGGER = _LOGGER_INSTANCE.get_logger()

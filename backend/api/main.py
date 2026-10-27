@@ -4,13 +4,24 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import settings    
 from exceptions import ConfigurationError,IngestionError
-from api.endpoints import health_router,rag_router,agent_router
+from api.endpoints import health_router,rag_router,agent_router,status_router
 from logger import GLOBAL_LOGGER as log
+from logger import _LOGGER_INSTANCE
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log.info("Meridian AI starting", mode=settings.app_mode, llm=settings.llm_model_name)
+    yield  # the app runs here
+    # Shutdown (cloud mode only): flush logs to GCS, because Cloud Run's disk disappears
+    # TODO invoke flush w
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Multi-agent procurement audit & RAG document intelligence backend.",
+    lifespan = lifespan
 )
 
 app.add_middleware(
@@ -24,6 +35,8 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(rag_router)
 app.include_router(agent_router)
+app.include_router(status_router)
+
 
 @app.exception_handler(ConfigurationError)
 async def configuration_error(_:Request, exc: ConfigurationError):

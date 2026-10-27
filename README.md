@@ -4,13 +4,14 @@
 
 Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support. Phase 5 adds custom exceptions for expected configuration and document-ingestion failures.
 
-This README documents five phases of Meridian AI:
+This README documents six phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
 - [Phase 3 — Unit testing](#phase-3--unit-testing)
 - [Phase 4 — Logging and monitoring](#phase-4--logging-and-monitoring)
 - [Phase 5 — Custom exceptions](#phase-5--custom-exceptions)
+- [Phase 6 — API docs, status and lifespan](#phase-6--api-docs-status-and-lifespan)
 
 # Phase 1 — Local PDF question answering
 
@@ -76,7 +77,7 @@ Interactive API documentation is available at [http://localhost:8080/docs](http:
 |---|---|---|
 | `GET` | `/api/health` | Check that the backend is responding. |
 | `POST` | `/api/rag/upload` | Upload one or more PDF files, save the originals, and ingest their text into the vector store. |
-| `GET` | See `/docs` | Return upload history for the current backend process. |
+| `GET` | `/api/rag/uploads` | Return upload history for the current backend process. |
 | `POST` | `/api/rag/ask` | Ask a question about indexed documents. |
 
 ### Health check
@@ -123,18 +124,6 @@ curl -X POST http://localhost:8080/api/rag/ask \
 ```
 
 The default retrieval method is `similarity`. An optional `retriever_type` can select `similarity`, `multiquery`, `contextual`, `mmr`, or `hyde`.
-
-## API docs, status and lifespan
-
-With the server running, FastAPI serves these pages automatically:
-
-- **Swagger UI:** http://localhost:8080/docs, an interactive page where you can try each endpoint.
-- **ReDoc:** http://localhost:8080/redoc, a read-only view of the same API.
-- **OpenAPI schema:** http://localhost:8080/openapi.json, the raw schema the other two pages are built from.
-
-`GET /api/status` returns the running configuration: the mode, backend status and uptime, the Python version and platform, and the storage, vector search and model settings. It makes no calls to Google.
-
-On startup, the app logs the mode and the LLM model name. The shutdown step is a placeholder for flushing logs to Cloud Storage in cloud mode, which is not implemented yet.
 
 ## Architecture and file-by-file learning notes
 
@@ -410,6 +399,24 @@ Phase 5 adds custom exceptions so expected failures return clear HTTP responses 
 ## Phase 5 outcome
 
 A missing API key or unreadable PDF produces a specific, readable response, and the failure is recorded in the log.
+
+# Phase 6 — API docs, status and lifespan
+
+## API docs
+
+With the server running, FastAPI serves these pages automatically:
+
+- **Swagger UI:** http://localhost:8080/docs, an interactive page where you can try each endpoint.
+- **ReDoc:** http://localhost:8080/redoc, a read-only view of the same API.
+- **OpenAPI schema:** http://localhost:8080/openapi.json, the raw schema the other two pages are built from.
+
+## Status endpoint
+
+`GET /api/status` returns the running configuration: the mode, backend status and uptime, the Python version and platform, and the storage, vector search and model settings. It makes no calls to Google.
+
+## Lifespan
+
+On startup, the app logs the mode and the LLM model name. The shutdown step is a placeholder for flushing logs to Cloud Storage in cloud mode, which is not implemented yet.
 
 ## Project layout
 

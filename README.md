@@ -124,6 +124,18 @@ curl -X POST http://localhost:8080/api/rag/ask \
 
 The default retrieval method is `similarity`. An optional `retriever_type` can select `similarity`, `multiquery`, `contextual`, `mmr`, or `hyde`.
 
+## API docs, status and lifespan
+
+With the server running, FastAPI serves these pages automatically:
+
+- **Swagger UI:** http://localhost:8080/docs, an interactive page where you can try each endpoint.
+- **ReDoc:** http://localhost:8080/redoc, a read-only view of the same API.
+- **OpenAPI schema:** http://localhost:8080/openapi.json, the raw schema the other two pages are built from.
+
+`GET /api/status` returns the running configuration: the mode, backend status and uptime, the Python version and platform, and the storage, vector search and model settings. It makes no calls to Google.
+
+On startup, the app logs the mode and the LLM model name. The shutdown step is a placeholder for flushing logs to Cloud Storage in cloud mode, which is not implemented yet.
+
 ## Architecture and file-by-file learning notes
 
 ### `data_ingestion`

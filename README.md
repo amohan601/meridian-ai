@@ -11,7 +11,7 @@ This README documents six phases of Meridian AI:
 - [Phase 3 — Unit testing](#phase-3--unit-testing)
 - [Phase 4 — Logging and monitoring](#phase-4--logging-and-monitoring)
 - [Phase 5 — Custom exceptions](#phase-5--custom-exceptions)
-- [Phase 6 — API docs, status and lifespan](#phase-6--api-docs-status-and-lifespan)
+- [Phase 6 — API docs, status, ingestion and lifespan](#phase-6--api-docs-status-ingestion-and-lifespan)
 
 # Phase 1 — Local PDF question answering
 
@@ -400,7 +400,7 @@ Phase 5 adds custom exceptions so expected failures return clear HTTP responses 
 
 A missing API key or unreadable PDF produces a specific, readable response, and the failure is recorded in the log.
 
-# Phase 6 — API docs, status and lifespan
+# Phase 6 — API docs, status, ingestion and lifespan
 
 ## API docs
 
@@ -413,6 +413,34 @@ With the server running, FastAPI serves these pages automatically:
 ## Status endpoint
 
 `GET /api/status` returns the running configuration: the mode, backend status and uptime, the Python version and platform, and the storage, vector search and model settings. It makes no calls to Google.
+
+## Ingest stored documents
+
+`POST /api/rag/ingest` indexes every PDF already in the document store. It does not take a file; it reads what was saved earlier by the upload route.
+
+- **Local mode:** the PDFs are read from `.meridian/uploads/`.
+- **Cloud mode:** the PDFs are read from the Cloud Storage bucket. This is not implemented yet.
+
+Each PDF is chunked and embedded, and the chunks are written to the vector store. Chunk IDs are stable, so running the endpoint again overwrites the same chunks instead of duplicating them.
+
+Example request and response:
+
+```bash
+curl -X POST http://localhost:8080/api/rag/ingest
+```
+
+```json
+{
+  "status": "Ingestion complete (local mode)",
+  "files": 1,
+  "pages": 1,
+  "chunks": 1
+}
+```
+
+If the store has no PDFs, the response is zeros for `files`, `pages` and `chunks`. If indexing fails, the endpoint returns HTTP 500 with the error message in `detail`.
+
+The "Index Stored Documents" button on the Index Documents tab calls this endpoint. `POST /api/rag/ingest-gcs` is an older alias that does the same thing.
 
 ## Lifespan
 

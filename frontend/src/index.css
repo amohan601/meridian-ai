@@ -6,42 +6,42 @@
 
 @layer base {
   :root {
-    --background: 210 20% 94%;
-    --foreground: 220 20% 10%;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 8%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card-foreground: 0 0% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
+    --popover-foreground: 0 0% 8%;
 
-    --primary: 160 84% 30%;
+    --primary: 263 70% 50%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 15% 94%;
-    --secondary-foreground: 220 20% 10%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 8%;
 
-    --muted: 220 15% 95%;
-    --muted-foreground: 215 16% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 243 75% 59%;
-    --accent-foreground: 210 40% 96%;
+    --accent: 270 60% 62%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 63% 40%;
     --destructive-foreground: 210 40% 96%;
 
-    --border: 220 15% 88%;
-    --input: 220 15% 88%;
-    --ring: 160 84% 39%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 263 70% 50%;
 
     --radius: 0.625rem;
 
-    --success: 160 84% 39%;
-    --success-bg: 160 84% 39%;
-    --warning: 38 92% 50%;
-    --warning-bg: 38 92% 50%;
-    --info: 243 75% 59%;
-    --info-bg: 243 75% 59%;
+    --success: 150 50% 30%;
+    --success-bg: 150 50% 30%;
+    --warning: 36 80% 40%;
+    --warning-bg: 36 80% 40%;
+    --info: 263 70% 50%;
+    --info-bg: 263 70% 50%;
     --danger: 0 72% 51%;
     --danger-bg: 0 72% 51%;
 
@@ -49,14 +49,14 @@
     --font-body: 'Inter', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-    --sidebar-background: 210 20% 96%;
-    --sidebar-foreground: 220 20% 10%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 8%;
+    --sidebar-primary: 263 70% 50%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 15% 94%;
-    --sidebar-accent-foreground: 220 20% 10%;
-    --sidebar-border: 220 15% 88%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 8%;
+    --sidebar-border: 0 0% 88%;
+    --sidebar-ring: 263 70% 50%;
   }
 }
 

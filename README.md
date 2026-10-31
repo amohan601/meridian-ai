@@ -4,7 +4,7 @@
 
 Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support. Phase 5 adds custom exceptions for expected configuration and document-ingestion failures.
 
-This README documents six phases of Meridian AI:
+This README documents seven phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
@@ -12,6 +12,7 @@ This README documents six phases of Meridian AI:
 - [Phase 4 — Logging and monitoring](#phase-4--logging-and-monitoring)
 - [Phase 5 — Custom exceptions](#phase-5--custom-exceptions)
 - [Phase 6 — API docs, status, ingestion and lifespan](#phase-6--api-docs-status-ingestion-and-lifespan)
+- [Phase 7 — React frontend](#phase-7--react-frontend)
 
 # Phase 1 — Local PDF question answering
 
@@ -446,6 +447,51 @@ The "Index Stored Documents" button on the Index Documents tab calls this endpoi
 
 On startup, the app logs the mode and the LLM model name. The shutdown step is a placeholder for flushing logs to Cloud Storage in cloud mode, which is not implemented yet.
 
+# Phase 7 — React frontend
+
+Phase 7 adds a single-page web interface in `frontend/` for the backend. It has four tabs: Index Documents, RAG Q&A, Procurement Audit and System Status.
+
+## Tech stack
+
+- **React 18 and TypeScript**, built and served by **Vite**. The dev server runs on port 3000.
+- **Tailwind CSS** for styling, with **shadcn/ui** components built on Radix UI primitives in `src/components/ui/`.
+- **lucide-react** for icons, **React Router** for routing, **TanStack Query** for data fetching, **Recharts** for charts, and **Sonner** for toast notifications.
+- **Vitest** (with jsdom) for unit tests and **Playwright** for browser tests. Both are configured, but only a placeholder test exists so far.
+
+## Key files
+
+| File | Purpose |
+|---|---|
+| `frontend/package.json` | Dependencies and scripts: `dev`, `build`, `test`, `lint`. |
+| `frontend/vite.config.ts` | Dev server settings and the `@/` alias for `src/`. |
+| `frontend/src/main.tsx` | Mounts the app and loads the global CSS. |
+| `frontend/src/App.tsx` | Providers and routes: `/` and a catch-all Not Found page. |
+| `frontend/src/pages/Index.tsx` | Main page with the sidebar of four tabs. |
+| `frontend/src/components/DocumentUploadTab.tsx` | Index Documents tab (default): uploads PDFs and indexes stored documents. |
+| `frontend/src/components/RagQATab.tsx` | RAG Q&A tab: asks questions about indexed documents. |
+| `frontend/src/components/AuditTab.tsx` | Procurement Audit tab: submits a purchase request to the agent audit. |
+| `frontend/src/components/SystemStatusTab.tsx` | System Status tab: shows the `/api/status` output. |
+| `frontend/src/lib/api.ts` | All backend calls. The base URL is `http://localhost:8080` in dev, or `VITE_API_URL` if it is set. |
+| `frontend/src/index.css` | Colour and font tokens for the theme. |
+
+## Running the frontend
+
+With the backend running on port 8080, run the following from the `frontend/` folder:
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+Then open http://localhost:3000.
+
+## Notes
+
+- The "Index Stored Documents" button calls `POST /api/rag/ingest` through `triggerStoreIngestion` in `src/lib/api.ts`. The backend must be restarted after the ingestion fixes before this button works.
+
 ## Project layout
 
 ```text
@@ -464,13 +510,26 @@ On startup, the app logs the mode and the LLM model name. The shutdown step is a
 │   │   └── settings.py        Environment-based settings
 │   ├── exceptions/            Exception definitions
 │   ├── logger/                Logging setup
-│   └── rag/
-│       ├── data_ingestion.py  PDF loading, splitting, and indexing
-│       ├── document_store.py  Original PDF storage
-│       ├── embeddings.py      Gemini embedding configuration
-│       ├── llm.py             Gemini chat model and text utility
-│       ├── retrieval.py       RAG retrieval and answer chain
-│       └── vector_store.py    Local Chroma configuration
+│   ├── rag/
+│   │   ├── data_ingestion.py  PDF loading, splitting, and indexing
+│   │   ├── document_store.py  Original PDF storage
+│   │   ├── embeddings.py      Gemini embedding configuration
+│   │   ├── llm.py             Gemini chat model and text utility
+│   │   ├── retrieval.py       RAG retrieval and answer chain
+│   │   └── vector_store.py    Local Chroma configuration
+│   └── tests/
+│       ├── conftest.py        Shared test setup
+│       ├── agent/             Agent tests
+│       ├── api/               API endpoint tests
+│       └── rag/               RAG component tests
+├── frontend/                  React web interface (Phase 7)
+│   ├── src/
+│   │   ├── components/        The four tabs and shadcn/ui components (ui/)
+│   │   ├── lib/api.ts         Backend API client
+│   │   ├── pages/             Main page and Not Found page
+│   │   └── index.css          Theme colours and fonts
+│   ├── package.json           Dependencies and scripts
+│   └── vite.config.ts         Vite dev server settings
 ├── sample_docs/               Example PDFs for local use
 ├── .meridian/
 │   ├── chroma/                 Local Chroma database (generated)

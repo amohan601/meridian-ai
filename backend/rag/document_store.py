@@ -15,6 +15,11 @@ import os
 from config.settings import settings
 import shutil
 from logger import GLOBAL_LOGGER as log
+from contextlib import contextmanager
+
+def location() -> str:
+    """Human-readable location, shown on the System Status tab."""
+    return settings.local_upload_dir
 
 #--------
 # save the file to document store
@@ -30,3 +35,25 @@ def save(local_path: str, filename: str) -> str:
     shutil.copyfile(local_path, stored_at)
     log.info(f"Original file stored {filename}. {stored_at}")
     return stored_at
+
+#--------
+# return the stored pds
+#--------
+@contextmanager
+def pdfs():
+    """Yield (local_path, source) for every stored PDF.
+    Used as a context manager because cloud files are downloaded to a temp folder
+    that must be cleaned up afterwards.
+    """
+    log.info("Inside pdfs")
+    if not settings.is_cloud:
+        log.info("not cloud")
+        folder = settings.local_upload_dir
+        log.info("Listing stored PDFs", folder=folder)
+        os.makedirs(folder, exist_ok=True)
+        yield (
+            (os.path.join(folder, name), f"local://{name}")
+            for name in sorted(os.listdir(folder))
+            if name.lower().endswith(".pdf")
+        )
+        return

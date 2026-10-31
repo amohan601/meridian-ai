@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     @property
     def chroma_dir(self) -> str:
         return os.path.join(self.local_data_dir, "chroma")
+
+    @property
+    def is_cloud(self) -> bool:
+        return self.app_mode == "cloud"
     
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"),  # found no matter which folder you start from

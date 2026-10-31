@@ -6,7 +6,7 @@ from config.settings import settings
 from fastapi.concurrency import run_in_threadpool
 from rag import document_store
 from rag.retrieval import ask_question
-from rag.data_ingestion import ingest_pdf
+from rag.data_ingestion import ingest_pdf,ingest_stored_pdfs
 import tempfile
 from api.schemas import  QueryRequest, QueryResponse, AuditRequest, AuditResponse
 from agent.agents import ProcurementSupervisor
@@ -51,25 +51,25 @@ def system_status():
 
         },
         "gcp": {
-            "project_id": settings.GCP_PROJECT if cloud else "not used (local mode)",
-            "region": settings.GCP_REGION if cloud else "-",
+            "project_id": "TBD For Cloud" if cloud else "not used (local mode)",
+            "region": "TBD For Cloud" if cloud else "NA",
 
         },
         "storage":{
             "location": document_store.location(),
-            "gcs_bucket": settings.GCS_BUCKET_NAME if cloud else "-",
-            "gcs_prefix": settings.GCS_PREFIX if cloud else "-",
+            "gcs_bucket": "TBD For cloud" if cloud else "-",
+            "gcs_prefix":  "TBD For cloud" if cloud else "-",
 
         },
         "vector_search":{
             "backend": "Vertex AI Vector Search" if cloud else "Chroma (local disk)",
-            "index_id": (settings.vector_search_index_id or "NA") if cloud else settings.chroma_dir,
-            "endpoint_id": (settings.vector_search_index_endpoint_id or "NA") if cloud else "-",
+            "index_id": ("TBD For cloud") if cloud else settings.chroma_dir,
+            "endpoint_id": ("TBD For cloud") if cloud else "-",
             "stream_update": cloud,
 
         },
         "models": {
-            "embedding": settings.embedding_model_name if cloud else settings.local_embedding_model_name,
+            "embedding": settings.local_embedding_model_name,
             "llm": settings.llm_model_name,
             "llm_framework": (
                 "Gemini API (chat) + Vertex AI (embeddings) via LangChain v1" if cloud
@@ -113,7 +113,7 @@ _UPLOAD_HISTORY: list[dict] = []
 @rag_router.post("/ask", response_model=QueryResponse)
 def rag_query(payload: QueryRequest):
     """Ask a question; the answer comes only from the indexed documents."""
-    log.info(f"inside /ask endpoint for {payload.query}")
+    log.info(f"inside /ask endpoint for {payload.query} and retriever_type {payload.retriever_type}")
     try:
         return QueryResponse(answer = ask_question(payload.query, payload.retriever_type))
     except MeridianError:
@@ -193,14 +193,15 @@ def list_uploads():
     return {"uploads": _UPLOAD_HISTORY}
 
 
-# @rag_router.post("/ingest")
-# @rag_router.post("/ingest-gcs", include_in_schema=False)  # old name, kept so older frontends still work
-# def trigger_store_ingestion():
-#     """Index every PDF already in the document store (local folder or GCS bucket)."""
-#     try:
-#         totals = ingest_stored_pdfs()
-#         return {"status": f"Ingestion complete ({settings.app_mode} mode)", **totals}
-#     # TODO custom exception
-#     except Exception as e:
-#         print("Stored-document ingestion failed")
-#         raise HTTPException(status_code=500, detail=str(e))
+@rag_router.post("/ingest")
+@rag_router.post("/ingest-gcs")  # old name, kept so older frontends still work
+def trigger_store_ingestion():
+    """Index every PDF already in the document store (local folder or GCS bucket)."""
+    log.info(f"inside /ingest endpoint ")
+    try:
+        totals = ingest_stored_pdfs()
+        return {"status": f"Ingestion complete ({settings.app_mode} mode)", **totals}
+    # TODO custom exception
+    except Exception as e:
+        print("Stored-document ingestion failed")
+        raise HTTPException(status_code=500, detail=str(e))

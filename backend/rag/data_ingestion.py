@@ -13,8 +13,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 import hashlib
 from rag.vector_store import get_vector_store
+from rag import document_store
 from logger import GLOBAL_LOGGER as log
 from exceptions import IngestionError
+
 
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100  # neighbouring chunks share 100 characters so sentences are not cut off
@@ -60,25 +62,37 @@ def ingest_pdf(local_path: str, filename: str) -> dict:
         ids = [_generate_chunk_id(chunk, index) for index, chunk in enumerate(chunks)]
         # perform vector store operation that will embed the chunks and save them into vector store
         log.info(f"Embedding chunks and adding to vector store {filename} length of chunks: {len(chunks)}")
+        
+        collection = get_vector_store()._collection
+        result = collection.get(ids=ids)
+
+        existing_ids = set(result["ids"])
+
+        for chunk_id in ids:
+            if chunk_id in existing_ids:
+                print(f"Chunk_id={chunk_id} exists")
+            else:
+                print(f"Chunk_id={chunk_id} does not exist")
+
         get_vector_store().add_documents(chunks, ids=ids)
 
 
     return {"pages": len(pages), "chunks": len(chunks)}
 
-# def ingest_stored_pdfs() -> dict:
-#     """Index every PDF already in the document store."""
-#     print("Indexing stored documents")
-#     totals = {"files": 0, "pages": 0, "chunks": 0}
+def ingest_stored_pdfs() -> dict:
+    """Index every PDF already in the document store."""
+    log.info("Indexing stored documents")
+    totals = {"files": 0, "pages": 0, "chunks": 0}
 
-#     with document_store.pdfs() as files:
-#         for local_path, source in files:
-#             result = ingest_pdf(local_path, source=source)
-#             print("Ingested stored PDF")
-#             totals["files"] += 1
-#             totals["pages"] += result["pages"]
-#             totals["chunks"] += result["chunks"]
+    with document_store.pdfs() as files:
+        for local_path, source in files:
+            result = ingest_pdf(local_path, source)
+            log.info("Ingested stored PDF")
+            totals["files"] += 1
+            totals["pages"] += result["pages"]
+            totals["chunks"] += result["chunks"]
 
-#     if totals["files"] == 0:
-#         print("No PDF documents found in the document store")
-#     print("Ingestion complete")
-#     return totals
+    if totals["files"] == 0:
+        print("No PDF documents found in the document store")
+    log.info("Ingestion complete")
+    return totals

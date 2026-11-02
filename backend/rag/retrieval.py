@@ -10,7 +10,7 @@ which also makes them easier to read and explain.
 """
 from langchain_core.runnables import RunnableLambda,RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from rag.llm import get_llm
+from rag.llm import get_llm, extract_text
 from rag.vector_store import get_vector_store
 from langchain_core.documents import Document
 from pydantic import BaseModel,Field
@@ -46,6 +46,23 @@ EXTRACT_PROMPT = ChatPromptTemplate.from_template(
 def _similarity(question: str, k: int = 3) -> list[Document]:
     """The k chunks closest in meaning to the question (fast, default)."""
     return get_vector_store().similarity_search(question, k=k)
+
+#---------------------
+# mmr
+#---------------------
+def _mmr(question: str, k=3) -> list[Document]:
+    return get_vector_store().max_marginal_relevance_search(query=question, k=k, fetch_k=10)
+
+
+#---------------------
+# mmr
+#---------------------
+def _hyde(question: str, k=3) -> list[Document]:
+    dummy_response =  get_llm().invoke(f"Write one sentence that could answer this question: {question}") 
+    imagined = extract_text(dummy_response.content) 
+    print("_hyde " + imagined)
+    return _similarity(imagined, k =k)
+
 
 #---------------------
 # rewrite query and then perform search. (multi query search)
@@ -101,6 +118,10 @@ def build_retriever(retriever_type: str = "similarity") -> RunnableLambda:
             strategy = _multiquery
         case "contextual":
             strategy = _contextual
+        case "mmr": 
+            strategy = _mmr 
+        case "hyde":
+            strategy = _hyde
         case _:
             log.info('invalid input retriever ..using similarity based retrieval')
             strategy = _similarity

@@ -4,7 +4,7 @@
 
 Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support. Phase 5 adds custom exceptions for expected configuration and document-ingestion failures.
 
-This README documents seven phases of Meridian AI:
+This README documents nine phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
@@ -13,6 +13,8 @@ This README documents seven phases of Meridian AI:
 - [Phase 5 — Custom exceptions](#phase-5--custom-exceptions)
 - [Phase 6 — API docs, status, ingestion and lifespan](#phase-6--api-docs-status-ingestion-and-lifespan)
 - [Phase 7 — React frontend](#phase-7--react-frontend)
+- [Phase 8 — Cloud mode](#phase-8--cloud-mode)
+- [Phase 9 — Test suites (fake and live)](#phase-9--test-suites-fake-and-live)
 
 # Phase 1 — Local PDF question answering
 
@@ -492,6 +494,117 @@ Then open http://localhost:3000.
 
 - The "Index Stored Documents" button calls `POST /api/rag/ingest` through `triggerStoreIngestion` in `src/lib/api.ts`. The backend must be restarted after the ingestion fixes before this button works.
 
+# Phase 8 — Cloud mode
+
+Phase 8 adds a `cloud` value for `APP_MODE`. In cloud mode the same backend stores PDFs in Cloud Storage, indexes them in Vertex AI Vector Search and embeds them with Vertex AI. Local mode is unchanged. The chat model is Gemini through the Gemini API in both modes.
+
+Each module that touches storage checks `settings.is_cloud`, so switching modes is a one-line change in `.env`.
+
+## What changes in cloud mode
+
+| Concern | Local mode (`APP_MODE=local`) | Cloud mode (`APP_MODE=cloud`) |
+|---|---|---|
+| Original PDFs | `.meridian/uploads/` (`rag/document_store.py`) | Cloud Storage bucket `GCS_BUCKET_NAME`, under `GCS_PREFIX` |
+| Vectors | Chroma on disk (`rag/vector_store.py`) | Vertex AI Vector Search, using the index and endpoint IDs |
+| Embeddings | `gemini-embedding-001` through the Gemini API (`rag/embeddings.py`) | `text-embedding-005` through Vertex AI, 768 dimensions |
+| Chat model | Gemini API | Gemini API (same as local) |
+| Log file | `logs/` on disk | Also uploaded to `gs://<bucket>/logs/<timestamp>.log` on shutdown (`logger/custom_logger.py`) |
+| `/api/status` | Shows Chroma and the local folder | Shows the GCP project, region, bucket, prefix and Vector Search IDs |
+
+## Cloud settings
+
+These are read by `config/settings.py` from `.env` (the names match `.env.example`):
+
+| Variable | Used for |
+|---|---|
+| `APP_MODE` | `local` (default) or `cloud` |
+| `GCP_PROJECT_ID` | Project for Vertex AI and Cloud Storage |
+| `GCP_REGION` | Region for Vertex AI (default `us-central1`) |
+| `GCS_BUCKET_NAME` | Bucket that holds the original PDFs and the logs |
+| `GCS_PREFIX` | Folder inside the bucket for PDFs (default empty) |
+| `VECTOR_SEARCH_INDEX_ID` | Vertex AI Vector Search index |
+| `VECTOR_SEARCH_INDEX_ENDPOINT_ID` | Vertex AI Vector Search endpoint |
+| `VERTEX_EMBEDDING_MODEL_NAME` | Cloud embedding model (default `text-embedding-005`) |
+| `GCP_SERVICE_ACCOUNT_PATH` | Service-account key for running cloud mode from a laptop |
+
+If a required value is empty, the store raises a `ConfigurationError`, and the API answers with HTTP 503 and the names of the missing settings (see Phase 5).
+
+## Credentials
+
+- **On a laptop:** set `GCP_SERVICE_ACCOUNT_PATH`. When cloud mode starts, `config/settings.py` sets `GOOGLE_APPLICATION_CREDENTIALS` to that key, if the file exists.
+- **On Cloud Run:** nothing is set in code. The service's own identity is used.
+
+## Ingesting stored documents in cloud mode
+
+`POST /api/rag/ingest` (Phase 6) calls `document_store.pdfs()`. In cloud mode this lists every PDF under `GCS_PREFIX`, downloads each one to a temporary folder, indexes it, and deletes the folder when the run finishes.
+
+## Serving the frontend
+
+If `frontend/dist` exists, `api/main.py` serves the built React app from the same server, with `/assets` as static files and a catch-all route for the single-page app. The Docker and Cloud Run setup uses this. Without the folder, the API runs alone and logs a warning.
+
+# Phase 9 — Test suites (fake and live)
+
+The tests live in `backend/tests/` and come in two suites, run separately:
+
+| Suite | Folder | Needs | What it checks |
+|---|---|---|---|
+| Fake | `backend/tests/fake/` | Nothing (no key, no internet) | Settings, the API routes, chunking, middleware and the agent wiring, using fake models |
+| Live | `backend/tests/live/` | A real `GOOGLE_API_KEY` in `.env`, and internet for the FX rate API | The same areas, calling the real Gemini model, Gemini embeddings and the Frankfurter API |
+
+Both suites share `backend/tests/conftest.py`, which only puts `backend/` on the import path. Each suite sets its own environment before the app's settings load.
+
+## How the fake suite works
+
+`backend/tests/fake/conftest.py` sets the environment before any app code is imported:
+
+- `APP_MODE=local`, and a fake `GOOGLE_API_KEY=test-key`.
+- `LOCAL_DATA_DIR` points to a new temporary folder, so the real `.meridian/` store is never touched.
+- The GCS bucket and Vector Search IDs are empty, so nothing can reach Google Cloud.
+
+Tests replace the model calls with stubs using `monkeypatch`. For example, `/api/rag/ask` and the audit route are replaced with fake functions, and the local vector store uses a fake embedding model. Cloud mode is covered by one test that is currently skipped.
+
+The fake suite has 16 tests: 15 pass and 1 is skipped. Its temporary data folder is not deleted automatically.
+
+## How the live suite works
+
+`backend/tests/live/conftest.py` does the following:
+
+- Sets `LOCAL_DATA_DIR` to a temporary folder before the app's imports, so tests write to a throwaway store.
+- Indexes the four PDFs in `sample_docs/` once per run (a session fixture), so the vector store is never empty on a fresh machine.
+- Deletes the temporary folder when the run finishes (an autouse session fixture).
+
+The live suite has 19 tests. They call the real Gemini model, so they cost API quota and can take a minute.
+
+## How to run the tests
+
+Run these from the project root, `meridian-ai/`, with the project's `.venv` set up. `requirements-dev.txt` lists pytest.
+
+Fake suite (offline):
+
+```bash
+.venv/bin/python -m pytest backend/tests/fake -q
+```
+
+Live suite (needs `GOOGLE_API_KEY` in `.env`):
+
+```bash
+.venv/bin/python -m pytest backend/tests/live -q
+```
+
+Both suites:
+
+```bash
+.venv/bin/python -m pytest backend/tests -q
+```
+
+One file, for example the tools tests:
+
+```bash
+.venv/bin/python -m pytest backend/tests/live/agent/test_tools.py -q
+```
+
+Run the offline suite first. It needs no key, so it shows whether the code loads before you spend live quota.
+
 ## Project layout
 
 ```text
@@ -518,10 +631,12 @@ Then open http://localhost:3000.
 │   │   ├── retrieval.py       RAG retrieval and answer chain
 │   │   └── vector_store.py    Local Chroma configuration
 │   └── tests/
-│       ├── conftest.py        Shared test setup
-│       ├── agent/             Agent tests
-│       ├── api/               API endpoint tests
-│       └── rag/               RAG component tests
+│       ├── conftest.py        Shared test setup (adds backend/ to the import path)
+│       ├── fake/              Offline suite (Phase 9)
+│       └── live/              Live suite against the real Gemini API (Phase 9)
+│           ├── agent/
+│           ├── api/
+│           └── rag/
 ├── frontend/                  React web interface (Phase 7)
 │   ├── src/
 │   │   ├── components/        The four tabs and shadcn/ui components (ui/)

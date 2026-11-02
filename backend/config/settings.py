@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(0.0, validation_alias="LLM_TEMPERATURE")
 
     # --- Embeddings ---
+    # Cloud: Vertex AI model. Must output 768 dims to match the Vector Search index.
+    embedding_model_name: str = Field("text-embedding-005", validation_alias="VERTEX_EMBEDDING_MODEL_NAME")
     # Local: Gemini API model (API key). Chroma has no fixed size, 768 keeps both modes alike.
     local_embedding_model_name: str = Field("gemini-embedding-001", validation_alias="LOCAL_EMBEDDING_MODEL_NAME")
     embedding_dimensions: int = 768
@@ -36,6 +38,25 @@ class Settings(BaseSettings):
     local_data_dir: str = Field(str(PROJECT_ROOT / ".meridian"), validation_alias="LOCAL_DATA_DIR")
     chroma_collection: str = Field("meridian_docs", validation_alias="CHROMA_COLLECTION")
 
+    # --- Cloud mode storage ---
+    gcs_bucket_name: str = Field("", validation_alias="GCS_BUCKET_NAME")
+    gcs_prefix: str = Field("", validation_alias="GCS_PREFIX")  
+    gcp_project_id: str | None = Field(default=None,validation_alias="GCP_PROJECT_ID")
+    gcp_region: str = Field("us-central1", validation_alias="GCP_REGION")   
+    vector_search_index_id: str = Field("", validation_alias="VECTOR_SEARCH_INDEX_ID")
+    vector_search_index_endpoint_id: str = Field("", validation_alias="VECTOR_SEARCH_INDEX_ENDPOINT_ID")    
+    gcp_service_account_path: str = Field("", validation_alias="GCP_SERVICE_ACCOUNT_PATH")
+
+    def missing_cloud_settings(self) -> list[str]:
+        """Names of cloud settings that are still empty (used for clear error messages)."""
+        required = {
+            "GCP_PROJECT_ID": self.gcp_project_id,
+            "GCS_BUCKET_NAME": self.gcs_bucket_name,
+            "VECTOR_SEARCH_INDEX_ID": self.vector_search_index_id,
+            "VECTOR_SEARCH_INDEX_ENDPOINT_ID": self.vector_search_index_endpoint_id,
+        }
+        return [name for name, value in required.items() if not value]
+
     @property
     def local_upload_dir(self) -> str:
         return os.path.join(self.local_data_dir, "uploads")
@@ -47,7 +68,8 @@ class Settings(BaseSettings):
     @property
     def is_cloud(self) -> bool:
         return self.app_mode == "cloud"
-    
+
+
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"),  # found no matter which folder you start from
         env_file_encoding="utf-8",
@@ -55,4 +77,15 @@ class Settings(BaseSettings):
     )
 
 
+
 settings = Settings()
+
+
+# Cloud mode on a laptop: point Google's client libraries at the service-account key.
+# (On Cloud Run nothing is set here; the service's own identity is used.)
+if settings.is_cloud and settings.gcp_service_account_path:
+    key_path = Path(settings.gcp_service_account_path)
+    if not key_path.is_absolute():
+        key_path = PROJECT_ROOT / key_path
+    if key_path.exists():
+        os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", str(key_path))

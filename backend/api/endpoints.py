@@ -51,25 +51,25 @@ def system_status():
 
         },
         "gcp": {
-            "project_id": "TBD For Cloud" if cloud else "not used (local mode)",
-            "region": "TBD For Cloud" if cloud else "NA",
+            "project_id": settings.gcp_project_id if cloud else "not used (local mode)",
+            "region": settings.gcp_region if cloud else "NA",
 
         },
         "storage":{
             "location": document_store.location(),
-            "gcs_bucket": "TBD For cloud" if cloud else "-",
-            "gcs_prefix":  "TBD For cloud" if cloud else "-",
+            "gcs_bucket": settings.gcs_bucket_name if cloud else "-",
+            "gcs_prefix":  settings.gcs_prefix if cloud else "-",
 
         },
         "vector_search":{
             "backend": "Vertex AI Vector Search" if cloud else "Chroma (local disk)",
-            "index_id": ("TBD For cloud") if cloud else settings.chroma_dir,
-            "endpoint_id": ("TBD For cloud") if cloud else "-",
+            "index_id": (settings.vector_search_index_id or "NA") if cloud else settings.chroma_dir,
+            "endpoint_id": (settings.vector_search_index_endpoint_id or "NA") if cloud else "-",
             "stream_update": cloud,
 
         },
         "models": {
-            "embedding": settings.local_embedding_model_name,
+            "embedding": settings.embedding_model_name if cloud else settings.local_embedding_model_name,
             "llm": settings.llm_model_name,
             "llm_framework": (
                 "Gemini API (chat) + Vertex AI (embeddings) via LangChain v1" if cloud
@@ -140,7 +140,7 @@ async def upload_documents(files: list[UploadFile] = File(...)):
             log.info(f'upload filename {upload.filename}')
             # Here you would implement the logic to save the file, chunk it, embed it, and index it.
             filename = os.path.basename(upload.filename or "")
-            if not filename.endswith(".pdf"):
+            if not filename.lower().endswith(".pdf"):
                 results.append({"filename": filename, "status": "skipped", "reason": "Only PDF files are supported."})
                 continue
 
@@ -176,7 +176,7 @@ async def upload_documents(files: list[UploadFile] = File(...)):
     except MeridianError:
         raise  
     except Exception as e:
-        log.exception(f"Upload failed str(e)")
+        log.exception("Upload failed")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         log.info("completed")
@@ -194,14 +194,14 @@ def list_uploads():
 
 
 @rag_router.post("/ingest")
-@rag_router.post("/ingest-gcs")  # old name, kept so older frontends still work
+@rag_router.post("/ingest-gcs",include_in_schema=False)  # old name, kept so older frontends still work
 def trigger_store_ingestion():
     """Index every PDF already in the document store (local folder or GCS bucket)."""
-    log.info(f"inside /ingest endpoint ")
     try:
         totals = ingest_stored_pdfs()
         return {"status": f"Ingestion complete ({settings.app_mode} mode)", **totals}
-    # TODO custom exception
+    except MeridianError:
+        raise
     except Exception as e:
-        print("Stored-document ingestion failed")
+        log.exception("Stored-document ingestion failed")
         raise HTTPException(status_code=500, detail=str(e))

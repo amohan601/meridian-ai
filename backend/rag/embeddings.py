@@ -22,8 +22,20 @@ def get_embeddings() -> GoogleGenerativeAIEmbeddings:
     """Google GenAI Embedding model"""
     # TODO add cloud settings later
 
+    if settings.is_cloud:
+        if not settings.gcp_project_id or not settings.gcp_region:
+            raise ConfigurationError("APP_MODE=cloud needs GCP_PROJECT_ID and GCP_REGION.") 
+        return GoogleGenerativeAIEmbeddings(
+            model=settings.embedding_model_name,
+            vertexai=True,
+            project=settings.gcp_project_id,
+            location=settings.gcp_region,
+            output_dimensionality=settings.embedding_dimensions,
+        )   
+    
     if not settings.GOOGLE_API_KEY:
         raise ConfigurationError("APP_MODE=local needs GOOGLE_API_KEY in .env for embeddings.")
+    
     return GoogleGenerativeAIEmbeddings(
         model=settings.local_embedding_model_name,
         google_api_key=settings.GOOGLE_API_KEY,

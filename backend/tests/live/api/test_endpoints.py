@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 
-SAMPLE_PDF = Path(__file__).resolve().parents[3] / "sample_docs" / "aldermoor_procurement_policy.pdf"
+SAMPLE_PDF = Path(__file__).resolve().parents[4] / "sample_docs" / "aldermoor_procurement_policy.pdf"
 
 
 def test_health_endpoint_reports_ok_and_mode():

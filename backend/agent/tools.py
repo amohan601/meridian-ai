@@ -111,7 +111,7 @@ Respond ONLY with the JSON object, no other text."""
       log.info(f"CREDIT SCORE: {score}/100 | RISK: {risk} | {reasoning}"   )
       return f"CREDIT SCORE: {score}/100 | RISK: {risk} | {reasoning}"      
     except Exception as e:
-      log.info.error("exception "+str(e))
+      log.error("exception "+str(e))
       # Return raw LLM response if parsing fails
       return result
 

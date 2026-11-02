@@ -253,3 +253,6 @@ frontend/.env*.local
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/pnpm-debug.log*
+frontend/bun.lock
+
+.benchmarks/

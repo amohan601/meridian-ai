@@ -4,7 +4,7 @@
 
 Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support. Phase 5 adds custom exceptions for expected configuration and document-ingestion failures.
 
-This README documents nine phases of Meridian AI:
+This README documents ten phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
@@ -15,6 +15,7 @@ This README documents nine phases of Meridian AI:
 - [Phase 7 — React frontend](#phase-7--react-frontend)
 - [Phase 8 — Cloud mode](#phase-8--cloud-mode)
 - [Phase 9 — Test suites (fake and live)](#phase-9--test-suites-fake-and-live)
+- [Phase 10 — Docker](#phase-10--docker)
 
 # Phase 1 — Local PDF question answering
 
@@ -605,6 +606,97 @@ One file, for example the tools tests:
 
 Run the offline suite first. It needs no key, so it shows whether the code loads before you spend live quota.
 
+# Phase 10 — Docker
+
+Phase 10 packages the backend and the built React frontend into one Docker image. A single container serves the API and the web app on port 8080. This is the same image that Cloud Run runs.
+
+## Docker files
+
+| File | Purpose |
+|---|---|
+| `Dockerfile` | Two stages. Stage 1 (`node:20-alpine`) installs the frontend packages and runs `npm run build`. Stage 2 (`python:3.12-slim`) installs `requirements.txt`, copies `backend/` and the built `frontend/dist/`, and starts uvicorn on `${PORT:-8080}`. |
+| `.dockerignore` | Keeps files out of the build. It excludes git data, `logs/`, `.meridian/`, `frontend/node_modules/`, `frontend/dist/`, `credentials/`, `.env.*`, `__pycache__/` and `README.md`. |
+
+## Build and run
+
+You need Docker running, and a `.env` file with `GOOGLE_API_KEY` (copy `.env.example` and add the key, with no quote marks). Run these from the project root.
+
+Create the env file:
+
+```bash
+cp .env.example .env
+```
+
+Build the image:
+
+```bash
+docker build -t meridian-ai .
+```
+
+Check that the image exists:
+
+```bash
+docker images meridian-ai
+```
+
+Start the container with the env file:
+
+```bash
+docker run -d --name meridian -p 8080:8080 --env-file .env meridian-ai
+```
+
+Check that it is running and healthy:
+
+```bash
+docker ps
+```
+
+```bash
+docker logs meridian
+```
+
+```bash
+curl http://localhost:8080/api/health
+```
+
+Then open http://localhost:8080/ for the web app. The built frontend calls the API on the same origin, so no separate frontend server is needed.
+
+## Inspect the container
+
+List the app folder inside the container:
+
+```bash
+docker exec meridian ls -A /app
+```
+
+List the environment variable names (values are not printed):
+
+```bash
+docker exec meridian sh -c 'env | cut -d= -f1 | sort'
+```
+
+Show the start command. Uvicorn should be PID 1:
+
+```bash
+docker exec meridian sh -c 'cat /proc/1/cmdline | tr "\0" " "'
+```
+
+## Stop and remove
+
+```bash
+docker stop meridian
+```
+
+```bash
+docker rm meridian
+```
+
+## Things to know
+
+- **The key is stored inside the image.** The Dockerfile runs `COPY .env ./`, and `.dockerignore` excludes `.env.*` but not `.env`. The app reads `/app/.env`, so a container started without `--env-file` still gets `GOOGLE_API_KEY`. Anyone who has the image can read the key.
+- **Local data is lost with the container.** Uploads and the Chroma index are written under `/app/.meridian/` inside the container. Removing the container removes them.
+- **Cloud mode in a container** needs the same `APP_MODE=cloud` and GCP variables as in Phase 8, passed with `--env-file`. The service-account key is not copied into the image: the `COPY credentials/` line is commented out in the Dockerfile.
+
 ## Project layout
 
 ```text
@@ -645,6 +737,8 @@ Run the offline suite first. It needs no key, so it shows whether the code loads
 │   │   └── index.css          Theme colours and fonts
 │   ├── package.json           Dependencies and scripts
 │   └── vite.config.ts         Vite dev server settings
+├── Dockerfile                 Two-stage image: builds the frontend, then runs the backend (Phase 10)
+├── .dockerignore              Files left out of the Docker build (Phase 10)
 ├── sample_docs/               Example PDFs for local use
 ├── .meridian/
 │   ├── chroma/                 Local Chroma database (generated)

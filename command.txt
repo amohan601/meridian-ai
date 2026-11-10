@@ -135,6 +135,8 @@ uvicorn api.main:app --app-dir backend --reload --port 8080
 
 cp .env.example .env     # then add your GOOGLE_API_KEY, no quote marks 
 
+# In the docker file uncomment # COPY .env ./ step for local run
+
 docker build -t meridian-ai .
 docker images meridian-ai
 

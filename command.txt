@@ -128,3 +128,113 @@ PYTHONPATH=. uv run python ../docs/examples/try_modes.py
 from root
  source .venv/bin/activate
 uvicorn api.main:app --app-dir backend --reload --port 8080
+
+------ local docker deployment-----------
+
+# run from the root folder of the project
+
+cp .env.example .env     # then add your GOOGLE_API_KEY, no quote marks 
+
+docker build -t meridian-ai .
+docker images meridian-ai
+
+
+docker run -d --name meridian -p 8080:8080  meridian-ai
+docker run -d --name meridian -p 8080:8080 --env-file .env meridian-ai
+docker ps
+docker logs meridian
+curl http://localhost:8080/api/health
+
+application accessible at http://localhost:8080/
+
+docker exec meridian ls -A /app
+docker exec meridian sh -c 'env | cut -d= -f1 | sort'
+docker exec meridian sh -c 'cat /proc/1/cmdline | tr "\0" " "'
+
+docker stop meridian
+docker rm meridian
+
+--------deploy steps to cloud ---------
+
+### go to terminal root of your project and run below steps 
+
+gcloud auth login
+
+# set this up with your project id 
+export PROJECT_ID="your-project-id"  
+export MY_EMAIL="my-email-registered-with-google-cloud"
+
+# find the organization related to this project
+gcloud organizations list
+export ORGANIZATION_ID="my-organization-id"
+
+# set project id 
+gcloud config set project $PROJECT_ID
+
+# confirm the project id
+gcloud config get-value project
+
+# Create the GitHub Deployer service account
+gcloud iam service-accounts create github-deployer \
+  --display-name="GitHub Actions Deployer" --project=$PROJECT_ID
+
+# Grant the "Editor" role so it can build infrastructure
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/editor"
+
+# Grant IAM Admin role so it can manage service-level permissions
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/resourcemanager.projectIamAdmin"
+
+# Set your active project
+export PROJECT_ID="YOUR_PROJECT_ID"        # Windows PowerShell: $env:PROJECT_ID="YOUR_PROJECT_ID"
+
+# Create the GitHub Deployer service account
+gcloud iam service-accounts create github-deployer \
+  --display-name="GitHub Actions Deployer" --project=$PROJECT_ID
+
+# Grant the "Editor" role so it can build infrastructure
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/editor"
+
+# Grant IAM Admin role so it can manage service-level permissions
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:github-deployer@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/resourcemanager.projectIamAdmin"
+
+# Generate the JSON key file
+# if this fails run next set of steps to fix it and then come back and run this agian
+# POSSIBLE ERROR:: FAILED_PRECONDITION: Key creation is not allowed on this service account.
+gcloud iam service-accounts keys create github-deployer-key.json \
+  --iam-account=github-deployer@${PROJECT_ID}.iam.gserviceaccount.com
+
+--## fix above issue steps start here ##--
+# steps to fix above command error
+# step 1
+#  Grant yourself the role on the Organization
+gcloud organizations add-iam-policy-binding $ORGANIZATION_ID \
+  --member="user:$MY_EMAIL" \
+  --role="roles/orgpolicy.policyAdmin"
+
+# step 2
+# Turn off the policy for your project. 
+# Wait about 60 seconds for the ABOVE role to take effect, then run
+gcloud resource-manager org-policies disable-enforce \
+  iam.disableServiceAccountKeyCreation \
+  --project=$PROJECT_ID
+
+--## fix above issue steps end here## --
+# Retry the JSON creation step
+# Generate the JSON key file
+gcloud iam service-accounts keys create github-deployer-key.json \
+  --iam-account=github-deployer@${PROJECT_ID}.iam.gserviceaccount.com
+
+
+
+# Turn on disabled policy from the error fix above after json file is created
+gcloud resource-manager org-policies enable-enforce  \
+  iam.disableServiceAccountKeyCreation  \
+  --project=$PROJECT_ID

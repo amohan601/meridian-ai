@@ -4,7 +4,7 @@
 
 Phases 1 and 2 run in the local Meridian AI backend. Phase 1 provides local PDF question answering, and Phase 2 adds the procurement audit agents. Phase 2 still requires configured model access and uses the Frankfurter API for exchange-rate validation when available. Phase 3 focuses on unit tests for the agent, RAG, and API endpoint code. Phase 4 adds centralized structured logging and monitoring support. Phase 5 adds custom exceptions for expected configuration and document-ingestion failures.
 
-This README documents ten phases of Meridian AI:
+This README documents eleven phases of Meridian AI:
 
 - [Phase 1 — Local PDF question answering](#phase-1--local-pdf-question-answering)
 - [Phase 2 — Local agentic procurement audit](#phase-2--agentic-procurement-audit)
@@ -16,6 +16,7 @@ This README documents ten phases of Meridian AI:
 - [Phase 8 — Cloud mode](#phase-8--cloud-mode)
 - [Phase 9 — Test suites (fake and live)](#phase-9--test-suites-fake-and-live)
 - [Phase 10 — Docker](#phase-10--docker)
+- [Phase 11 — Deploy to Google Cloud](#phase-11--deploy-to-google-cloud)
 
 # Phase 1 — Local PDF question answering
 
@@ -639,10 +640,10 @@ Check that the image exists:
 docker images meridian-ai
 ```
 
-Start the container with the env file:
+Start the container. You do not need `--env-file`, because `.env` is copied into the image (see Things to know):
 
 ```bash
-docker run -d --name meridian -p 8080:8080 --env-file .env meridian-ai
+docker run -d --name meridian -p 8080:8080 meridian-ai
 ```
 
 Check that it is running and healthy:
@@ -693,9 +694,83 @@ docker rm meridian
 
 ## Things to know
 
-- **The key is stored inside the image.** The Dockerfile runs `COPY .env ./`, and `.dockerignore` excludes `.env.*` but not `.env`. The app reads `/app/.env`, so a container started without `--env-file` still gets `GOOGLE_API_KEY`. Anyone who has the image can read the key.
+- **`.env` is included in the image.** The Dockerfile runs `COPY .env ./`, and the `# .env` line in `.dockerignore` is commented out, so `.env` is not excluded. The app reads `/app/.env`, so a container started without `--env-file` still gets `GOOGLE_API_KEY`. Anyone who has the image can read the key.
+- **To use different settings,** pass `--env-file` (or `-e`). Values from the environment override the `.env` copied into the image.
 - **Local data is lost with the container.** Uploads and the Chroma index are written under `/app/.meridian/` inside the container. Removing the container removes them.
-- **Cloud mode in a container** needs the same `APP_MODE=cloud` and GCP variables as in Phase 8, passed with `--env-file`. The service-account key is not copied into the image: the `COPY credentials/` line is commented out in the Dockerfile.
+- **Cloud mode in a container** needs the same `APP_MODE=cloud` and GCP variables as in Phase 8. Pass them with `--env-file` (they override the `.env` copied into the image). The service-account key is not copied into the image: the `COPY credentials/` line is commented out in the Dockerfile.
+
+# Phase 11 — Deploy to Google Cloud
+
+Phase 11 runs the Phase 10 image on Google Cloud. A GitHub Actions workflow creates the cloud resources, builds the image and deploys the app to Cloud Run. The step-by-step guide for a new project is in [DEPLOY.md](DEPLOY.md). This section describes the architecture and what the workflow does.
+
+## Architecture
+
+| Component | Google service | Role |
+|---|---|---|
+| Web server | Cloud Run (`meridian-ai-cloud-run`) | Runs the FastAPI backend and the built React frontend. Public over HTTPS. Capped at 3 instances. |
+| Gemini API key | Secret Manager (`GOOGLE_API_KEY`) | Holds the Gemini key. Cloud Run reads it as the `GOOGLE_API_KEY` environment variable. |
+| Original files and logs | Cloud Storage (`<project-id>-vector-staging`) | Stores uploaded PDFs under `uploads/`, index input data, and log files under `logs/`. |
+| Vector database | Vertex AI Vector Search | Index `meridian-ai-docs-production` (768 dimensions, dot-product distance, stream updates), deployed to endpoint `meridian-ai-docs-endpoint`. |
+| Embeddings | Vertex AI (`text-embedding-005`) | Turns text into 768-dimensional vectors. |
+| Chat model | Gemini API (`gemini-3.8-flash`) | Writes the answers. The same model as local mode. |
+| Logs | Cloud Logging | Collects the JSON log lines that the app writes to stdout. |
+| Permissions | IAM | Gives the deployer and the Cloud Run service account only the roles they need. |
+| Image | Cloud Build and Artifact Registry | Cloud Build builds the Docker image and stores it in the registry. |
+| Deploy pipeline | GitHub Actions (`.github/workflows/deploy.yml`) | Runs on a push to `main`, or by hand from the Actions tab. |
+
+The browser sends HTTPS requests to Cloud Run. Cloud Run calls Vertex AI Vector Search for similarity search and Vertex AI for embeddings, reads the PDFs and writes logs in Cloud Storage, and calls the Gemini API for answers.
+
+Vector Search and Cloud Storage are billed separately. Vector Search charges by the hour while the index is deployed, which is the main cost.
+
+## What the workflow does
+
+The workflow in `.github/workflows/deploy.yml` runs these steps in order:
+
+| Step | What it does |
+|---|---|
+| Sign in | Logs in to Google Cloud with the `GCP_CREDENTIALS_JSON` secret. |
+| Enable APIs | Enables the Google services the app needs, then waits 90 seconds. |
+| Storage bucket | Creates `<project-id>-vector-staging` in `us-central1` if it does not exist. Public access is blocked. |
+| Embeddings placeholder | Runs `generate_json.py` to make a placeholder vector and uploads it to the bucket. |
+| Vector Search | Creates the index and endpoint if they do not exist, deploys the index to the endpoint, and removes the placeholder vector. Deploying the index takes 30–45 minutes. |
+| Secret | Creates or updates the `GOOGLE_API_KEY` secret and lets the Cloud Run service account read it. |
+| Build | Grants Cloud Build the roles it needs, then runs `gcloud builds submit` to build and push the image. |
+| Runtime roles | Gives the Cloud Run service account `roles/aiplatform.user` and `roles/storage.objectAdmin`. |
+| Deploy | Deploys the image to Cloud Run with the environment variables below and the secret. |
+| Public access | Adds the `allUsers` invoker role, so anyone with the URL can call the service. |
+
+Most steps skip what already exists, so running the workflow again is safe. The secret step adds a new secret version on every run.
+
+## Cloud Run environment
+
+The workflow sets these variables on the service:
+
+| Variable | Value |
+|---|---|
+| `APP_MODE` | `cloud` |
+| `GCP_PROJECT_ID`, `GCP_REGION` | Your project and `us-central1` |
+| `GCS_BUCKET_NAME`, `GCS_PREFIX` | `<project-id>-vector-staging` and `uploads/` |
+| `VERTEX_LLM_MODEL_NAME` | `gemini-3.8-flash` |
+| `VERTEX_EMBEDDING_MODEL_NAME` | `text-embedding-005` |
+| `VECTOR_SEARCH_INDEX_ID`, `VECTOR_SEARCH_INDEX_ENDPOINT_ID` | Set from the index and endpoint that the workflow created |
+
+`GOOGLE_API_KEY` comes from Secret Manager, not from a plain environment variable.
+
+## Check the deployment
+
+- The workflow log prints the service URL under "Deploy to Cloud Run".
+- Open `<service-url>/api/health` to check that the server is up, and `<service-url>/api/status` to see the cloud settings (Phase 6).
+- Open the Cloud Run **Logs** page to see the application logs.
+
+## Security notes
+
+- The service is public and has no login. Anyone who finds the URL can use your Gemini quota and upload files. Upload only sample or non-private documents.
+- The image contains `.env`, because the Dockerfile copies it (Phase 10). Remove that line before you rely on Secret Manager alone.
+- The deployer service account has broad roles (`roles/editor` and `roles/resourcemanager.projectIamAdmin`). DEPLOY.md explains why, and that a real company would grant less.
+
+## Stop and clean up
+
+To stop the charges, delete the Vector Search endpoint and index, delete the Cloud Run service, or delete the whole project. DEPLOY.md lists the commands. Deleting the project removes all of its resources.
 
 ## Project layout
 
@@ -739,6 +814,9 @@ docker rm meridian
 │   └── vite.config.ts         Vite dev server settings
 ├── Dockerfile                 Two-stage image: builds the frontend, then runs the backend (Phase 10)
 ├── .dockerignore              Files left out of the Docker build (Phase 10)
+├── .github/workflows/deploy.yml  GitHub Actions workflow that deploys to Google Cloud (Phase 11)
+├── DEPLOY.md                  Step-by-step guide for deploying to Google Cloud (Phase 11)
+├── generate_json.py           Makes the placeholder embedding file used by the deploy workflow (Phase 11)
 ├── sample_docs/               Example PDFs for local use
 ├── .meridian/
 │   ├── chroma/                 Local Chroma database (generated)

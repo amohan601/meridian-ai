@@ -226,6 +226,12 @@ frontend/dist/
 .env
 credentials/
 
+# Deployment keys and generated files (see DEPLOY.md)
+github-deployer-key.json
+*-key.json
+credentials.json
+init_embeddings.json
+
 # Force inclusion of frontend source files that might be caught by broad rules
 !frontend/src/lib/
 !frontend/src/lib/**

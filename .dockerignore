@@ -7,6 +7,10 @@ __pycache__/
 # .env
 .env.*
 credentials/
+github-deployer-key.json
+*-key.json
+credentials.json
+init_embeddings.json
 
 # Git
 .git/

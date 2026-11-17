@@ -236,7 +236,7 @@ Do this when you finish. It stops the charges.
 
 ```bash
 REGION=us-central1
-gcloud ai index-endpoints undeploy-index ENDPOINT_ID --deployed-index-id=deployed_financial_docs --region=$REGION
+gcloud ai index-endpoints undeploy-index ENDPOINT_ID --deployed-index-id=deployed_meridian_ai_docs --region=$REGION
 gcloud ai index-endpoints delete ENDPOINT_ID --region=$REGION
 gcloud ai indexes delete INDEX_ID --region=$REGION
 ```

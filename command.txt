@@ -166,6 +166,7 @@ gcloud auth login
 export PROJECT_ID="your-project-id"  
 export MY_EMAIL="my-email-registered-with-google-cloud"
 
+
 # find the organization related to this project
 gcloud organizations list
 export ORGANIZATION_ID="my-organization-id"
@@ -240,3 +241,68 @@ gcloud iam service-accounts keys create github-deployer-key.json \
 gcloud resource-manager org-policies enable-enforce  \
   iam.disableServiceAccountKeyCreation  \
   --project=$PROJECT_ID
+
+## collect the values after the git workflow finishes its run
+gcloud ai indexes list --region=us-central1
+gcloud ai index-endpoints list --region=us-central1
+
+
+-------- check for anything still open in GCP (read-only) ---------
+
+gcloud run services list --region=us-central1
+
+gcloud ai indexes list --region=us-central1
+
+gcloud ai index-endpoints list --region=us-central1
+
+gcloud storage buckets list
+
+gcloud artifacts repositories list
+
+gcloud secrets list
+
+gcloud iam service-accounts list
+
+gcloud billing projects describe $PROJECT_ID
+
+---CLEANUP Cloud-----
+# to delete everything
+
+export REGION="us-central1"
+export ENDPOINT_ID="meridian_ai_endpoint_index_id"
+export INDEX_ID="meridian_ai_index_id"
+export PROJECT_ID="your-project-id"  
+
+
+gcloud ai index-endpoints undeploy-index $ENDPOINT_ID \
+  --deployed-index-id=deployed_financial_docs --region=$REGION
+
+gcloud ai index-endpoints delete $ENDPOINT_ID --region=$REGION
+
+gcloud ai indexes delete $INDEX_ID --region=$REGION
+
+gcloud run services delete meridian-ai-cloud-run --region=us-central1
+
+# Delete the container image repository. 
+# The gcr.io repository is usually in the us location:
+# gcloud artifacts repositories delete gcr.io --location=us
+
+# Delete the Gemini key secret:
+gcloud secrets delete GOOGLE_API_KEY --quiet
+
+# Delete the deployer service account, which also removes its keys:
+gcloud iam service-accounts delete \
+  github-deployer@${PROJECT_ID}.iam.gserviceaccount.com --quiet
+
+# Remove the roles the workflow gave the default compute service account. These are the four roles the workflow added. The loop leaves other roles in place:
+for ROLE in roles/aiplatform.user roles/storage.objectAdmin \
+  roles/secretmanager.secretAccessor roles/cloudbuild.builds.builder; 
+  do gcloud projects remove-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="$ROLE" --quiet; done
+
+
+### If you want to delete project id
+gcloud projects delete YOUR_PROJECT_ID
+
+

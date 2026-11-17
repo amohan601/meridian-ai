@@ -756,6 +756,29 @@ The workflow sets these variables on the service:
 
 `GOOGLE_API_KEY` comes from Secret Manager, not from a plain environment variable.
 
+## Storage buckets
+
+The deployment uses two Cloud Storage buckets. Both are in the project, and you can see them under Cloud Storage → Buckets in the Console.
+
+### `<project-id>-vector-staging`
+
+Created by the workflow's "Storage bucket" step. It holds four folders:
+
+| Folder | What it contains | Created by |
+|---|---|---|
+| `uploads/` | A copy of each PDF uploaded through the app. | `POST /api/rag/upload` (`rag/document_store.py`), using the `GCS_PREFIX` value `uploads/`. |
+| `index-data/` | `init_embeddings.json`, one placeholder vector (`init_0001`). The index reads this folder once, when it is created. Later uploads do not write here. | The "Ensure Initial Embeddings File Exists" step, which runs `generate_json.py`. |
+| `documents/` | The text of indexed chunks, one JSON file per document ID. Vector Search stores only vectors and IDs, so the text goes here. | The Vertex AI vector store library, when chunks are added (`rag/vector_store.py`). |
+| `logs/` | Log files, one per server start, named by start time. | `flush_to_gcs` in `logger/custom_logger.py`, at shutdown. |
+
+`documents/` may not match the number of uploaded chunks. The current `rag/data_ingestion.py` reads a private attribute of the local store before it adds chunks, and the Vertex store does not have that attribute. Check the Cloud Run logs before you rely on this folder.
+
+### `<project-id>_cloudbuild`
+
+Created by Google the first time `gcloud builds submit` runs in the project. The workflow's "Build and Push Docker Image" step runs that command, so the deployer service account created it. The repository does not create it.
+
+It holds `source/`, which contains one `.tgz` archive for each build. The archive contains the project files that the build uses, such as `Dockerfile`, `.dockerignore` and `.env.example`. It does not contain `.env`, because `.gitignore` excludes it. The archives remain in the bucket after the build, so you can delete old ones if you no longer need them.
+
 ## Check the deployment
 
 - The workflow log prints the service URL under "Deploy to Cloud Run".
@@ -771,6 +794,16 @@ The workflow sets these variables on the service:
 ## Stop and clean up
 
 To stop the charges, delete the Vector Search endpoint and index, delete the Cloud Run service, or delete the whole project. DEPLOY.md lists the commands. Deleting the project removes all of its resources.
+
+If you keep the project, delete these items as well. Deleting the Vector Search index, endpoint and Cloud Run service does not remove them:
+
+- The Cloud Storage buckets `<project-id>-vector-staging` and `<project-id>_cloudbuild`. Delete them under Cloud Storage → Buckets, or with `gcloud storage rm -r gs://<bucket-name>`.
+- The container images in Artifact Registry (the `gcr.io` repository).
+- The `GOOGLE_API_KEY` secret in Secret Manager.
+- The `github-deployer` service account and its key (see DEPLOY.md step 6).
+- The IAM role bindings given to the default compute service account.
+
+To check for anything still open, run the read-only commands at the end of `command.txt`. Those commands list the Cloud Run services, Vector Search indexes and endpoints, buckets, image repositories, secrets and service accounts.
 
 ## Project layout
 

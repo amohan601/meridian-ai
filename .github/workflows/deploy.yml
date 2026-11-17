@@ -154,21 +154,21 @@ jobs:
           fi
 
           # 3. Ensure Index is Deployed to Endpoint
-          IS_DEPLOYED=$(gcloud ai index-endpoints describe $ENDPOINT_ID --region=${{ env.REGION }} --format="value(deployedIndexes.id)" 2>/dev/null | grep "deployed_financial_docs" || true)
+          IS_DEPLOYED=$(gcloud ai index-endpoints describe $ENDPOINT_ID --region=${{ env.REGION }} --format="value(deployedIndexes.id)" 2>/dev/null | grep "deployed_meridian_ai_docs" || true)
 
           if [ -z "$IS_DEPLOYED" ]; then
             echo "Triggering Index Deployment to Endpoint. (Async operation)..."
             DEPLOY_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
             gcloud ai index-endpoints deploy-index $ENDPOINT_ID \
-              --deployed-index-id=deployed_financial_docs \
-              --display-name=financial-docs-deployed \
+              --deployed-index-id=deployed_meridian_ai_docs \
+              --display-name=meridian-ai-docs-deployed \
               --index=$INDEX_ID \
               --region=${{ env.REGION }} \
               --project=${{ env.PROJECT_ID }}
             echo "Wait up to 45 minutes for deployment to finish..."
             for attempt in $(seq 1 45); do
               # We check if the deployment is fully complete by looking for the index in the endpoint
-              IS_DEPLOYED_NOW=$(gcloud ai index-endpoints describe $ENDPOINT_ID --region=${{ env.REGION }} --format="value(deployedIndexes.id)" 2>/dev/null | grep "deployed_financial_docs" || true)
+              IS_DEPLOYED_NOW=$(gcloud ai index-endpoints describe $ENDPOINT_ID --region=${{ env.REGION }} --format="value(deployedIndexes.id)" 2>/dev/null | grep "deployed_meridian_ai_docs" || true)
 
               if [ -n "$IS_DEPLOYED_NOW" ]; then
                 echo "Index deployment is complete and ACTIVE on the endpoint!"
